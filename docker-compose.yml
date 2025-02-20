@@ -1,0 +1,24 @@
+services:
+  gnn:
+    build: .
+    # Increase /dev/shm to 4GB
+    shm_size: "4g"
+    # Optionally set IPC=host (recommended for large PyTorch workloads)
+    ipc: "host"
+    # Raise memlock ulimit if desired
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    # Keep container alive & interactive so you can attach
+    tty: true
+    stdin_open: true
+    # If you prefer to run your script automatically, you can override CMD here:
+    # command: ["python", "supervised_pretrain.py"]
