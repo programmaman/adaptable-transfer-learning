@@ -14,4 +14,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . /app
 
 # Keep container running by default so you can attach to it, e.g. with an IDE
-CMD ["tail", "-f", "/dev/null"]
+CMD ["/bin/bash"]
+
