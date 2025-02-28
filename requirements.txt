@@ -1,2 +1,4 @@
 # requirements.txt
 torch-geometric
+torch
+networkx

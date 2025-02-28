@@ -1,9 +1,8 @@
 import logging
-import random
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.nn.functional as functional_neural_network
 import torch.optim as optim
 from torch_geometric.data import Data
 from torch_geometric.nn import GCNConv
@@ -14,17 +13,28 @@ logger = logging.getLogger(__name__)
 
 import networkx as nx
 
+def get_device():
+    """
+    Returns the best available device: GPU if available, otherwise CPU.
+    """
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
+        logger.info(f"Using GPU: {torch.cuda.get_device_name(0)}")
+    else:
+        device = torch.device('cpu')
+        logger.info("GPU not available, using CPU")
+    return device
 
 def compute_clustering_coefficients(data):
     # Convert PyG Data object to a NetworkX graph.
-    G = nx.Graph()
+    graph = nx.Graph()
     edges = data.edge_index.t().tolist()  # Convert tensor to list of edges.
-    G.add_edges_from(edges)
+    graph.add_edges_from(edges)
     # Ensure all nodes are present, including isolated ones.
-    G.add_nodes_from(range(data.num_nodes))
+    graph.add_nodes_from(range(data.num_nodes))
 
     # Compute clustering coefficient for each node.
-    clustering = nx.clustering(G)
+    clustering = nx.clustering(graph)
 
     # Create a tensor with clustering coefficients in the node order.
     clustering_tensor = torch.tensor([clustering[i] for i in range(data.num_nodes)], dtype=torch.float)
@@ -46,9 +56,9 @@ class GNNModel(nn.Module):
 
     def forward(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:
         x = self.conv1(x, edge_index)
-        x = F.relu(x)
+        x = functional_neural_network.relu(x)
         x = self.conv2(x, edge_index)
-        x = F.relu(x)
+        x = functional_neural_network.relu(x)
         x = self.conv3(x, edge_index)
         return x.squeeze()  # Squeeze to shape [num_nodes]
 
@@ -65,13 +75,13 @@ def generate_synthetic_graph(num_nodes=200, num_edges=500, feature_dim=16):
     return data
 
 
-def train_structural_feature_predictor(model, data, epochs=100, lr=0.01, device='cpu'):
+def train_structural_feature_predictor(model, data, epochs=100, lr=0.01, weight_decay=0.01, device=torch.device('cpu')):
     """
     Pretrain the GNN backbone by regressing the clustering coefficient for each node.
     """
     model.to(device)
     data = data.to(device)
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     loss_fn = nn.MSELoss()
 
     logger.info("Starting structural feature prediction pretraining...")
@@ -100,19 +110,19 @@ class FineTuneGNN(nn.Module):
         self.fc = nn.Linear(1, out_channels)
 
     def forward(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:
-        features = self.backbone(x, edge_index).unsqueeze(-1)  # Shape: [num_nodes, 1]
+        features = self.backbone.forward(x, edge_index).unsqueeze(-1)  # Shape: [num_nodes, 1]
         out = self.fc(features)
         return out
 
 
-def fine_tune_model(model, data, task_labels, epochs=50, lr=0.01, device='cpu'):
+def fine_tune_model(model, data, task_labels, epochs=50, lr=0.01, weight_decay=0.01, device=torch.device('cpu')):
     """
     Fine-tune the classification model (backbone + classification head) on a downstream task.
     """
     model.to(device)
     data = data.to(device)
     task_labels = task_labels.to(device)
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     loss_fn = nn.CrossEntropyLoss()
 
     logger.info("Starting fine-tuning...")
@@ -129,7 +139,7 @@ def fine_tune_model(model, data, task_labels, epochs=50, lr=0.01, device='cpu'):
 
     return model
 
-def fine_tune_link_prediction(model, data, epochs=50, lr=0.01, device='cpu'):
+def fine_tune_link_prediction(model, data, epochs=50, lr=0.01, weight_decay=0.01, device=torch.device('cpu')):
     """
     Fine-tune the model for link prediction (predicting missing edges).
     """
@@ -142,7 +152,7 @@ def fine_tune_link_prediction(model, data, epochs=50, lr=0.01, device='cpu'):
     # Generate negative edges (random node pairs that do NOT have edges)
     neg_edge_index = torch.randint(0, data.num_nodes, (2, pos_edge_index.shape[1]), dtype=torch.long)
 
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     loss_fn = nn.BCEWithLogitsLoss()
 
     logger.info("Starting fine-tuning for link prediction...")
@@ -174,7 +184,7 @@ def fine_tune_link_prediction(model, data, epochs=50, lr=0.01, device='cpu'):
     return model
 
 
-def evaluate_model(model, data, labels, device='cpu'):
+def evaluate_model(model, data, labels, device=torch.device('cpu')):
     """
     Evaluate the classification model on the provided labels.
     """
@@ -187,47 +197,63 @@ def evaluate_model(model, data, labels, device='cpu'):
         out = model(data.x, data.edge_index)
         loss = loss_fn(out, labels)
         predictions = out.argmax(dim=1)
-        accuracy = (predictions == labels).float().mean().item()
+        accuracy = (predictions == labels).to(torch.float).mean().item()
 
     return loss.item(), accuracy
 
 
+def experiment_node_classification(data, task_labels, device=torch.device('cpu')):
+    # Step 2: Pretraining using structural feature prediction.
+    backbone = GNNModel(in_channels=16, hidden_channels=32, mid_channels=64)
+    pretrained_backbone = train_structural_feature_predictor(backbone, data, epochs=100, lr=0.01, device=device)
+
+    ### NODE CLASSIFICATION FINE-TUNING ###
+    pretrained_node_model = FineTuneGNN(pretrained_backbone, out_channels=2)
+    pretrained_node_model = fine_tune_model(pretrained_node_model, data, task_labels, epochs=50, lr=0.01, device=device)
+
+    # Compare performance with training from scratch for node classification
+    scratch_node_backbone = GNNModel(in_channels=16, hidden_channels=32, mid_channels=64)
+    scratch_node_model = FineTuneGNN(scratch_node_backbone, out_channels=2)
+    scratch_node_model = fine_tune_model(scratch_node_model, data, task_labels, epochs=50, lr=0.01, device=device)
+
+    pretrained_node_loss, pretrained_node_acc = evaluate_model(pretrained_node_model, data, task_labels, device)
+    scratch_node_loss, scratch_node_acc = evaluate_model(scratch_node_model, data, task_labels, device)
+
+    logger.info(f"Pretrained Node Model - Loss: {pretrained_node_loss:.4f}, Accuracy: {pretrained_node_acc:.4f}")
+    logger.info(f"Scratch Node Model - Loss: {scratch_node_loss:.4f}, Accuracy: {scratch_node_acc:.4f}")
+
+
+def experiment_link_prediction(data, device=torch.device('cpu')):
+    # Step 2: Pretraining using structural feature prediction.
+    backbone = GNNModel(in_channels=16, hidden_channels=32, mid_channels=64)
+    pretrained_backbone = train_structural_feature_predictor(backbone, data, epochs=100, lr=0.01, device=device)
+
+    ### LINK PREDICTION FINE-TUNING ###
+    fine_tune_link_prediction(pretrained_backbone, data, epochs=50, lr=0.01, device=device)
+
+    # Compare performance with training from scratch for link prediction
+    scratch_link_backbone = GNNModel(in_channels=16, hidden_channels=32, mid_channels=64)
+    fine_tune_link_prediction(scratch_link_backbone, data, epochs=50, lr=0.01, device=device)
+
+    logger.info("Comparison of pretraining vs training from scratch completed.")
+
+
 def main():
+    # Get device
+    device = get_device()
+
     # Step 1: Generate synthetic graph data.
     data = generate_synthetic_graph(num_nodes=200, num_edges=500, feature_dim=16)
 
     # Generate random task labels for the downstream node classification task.
     task_labels = torch.randint(0, 2, (data.num_nodes,))
 
-    # Step 2: Pretraining using structural feature prediction.
-    backbone = GNNModel(in_channels=16, hidden_channels=32, mid_channels=64)
-    pretrained_backbone = train_structural_feature_predictor(backbone, data, epochs=100, lr=0.01, device='cpu')
-
-    ### NODE CLASSIFICATION FINE-TUNING ###
-    pretrained_node_model = FineTuneGNN(pretrained_backbone, out_channels=2)
-    pretrained_node_model = fine_tune_model(pretrained_node_model, data, task_labels, epochs=50, lr=0.01, device='cpu')
-
-    # Compare performance with training from scratch for node classification
-    scratch_node_backbone = GNNModel(in_channels=16, hidden_channels=32, mid_channels=64)
-    scratch_node_model = FineTuneGNN(scratch_node_backbone, out_channels=2)
-    scratch_node_model = fine_tune_model(scratch_node_model, data, task_labels, epochs=50, lr=0.01, device='cpu')
-
-    pretrained_node_loss, pretrained_node_acc = evaluate_model(pretrained_node_model, data, task_labels)
-    scratch_node_loss, scratch_node_acc = evaluate_model(scratch_node_model, data, task_labels)
-
-    logger.info(f"Pretrained Node Model - Loss: {pretrained_node_loss:.4f}, Accuracy: {pretrained_node_acc:.4f}")
-    logger.info(f"Scratch Node Model - Loss: {scratch_node_loss:.4f}, Accuracy: {scratch_node_acc:.4f}")
-
-    ### LINK PREDICTION FINE-TUNING ###
-    pretrained_link_model = fine_tune_link_prediction(pretrained_backbone, data, epochs=50, lr=0.01, device='cpu')
-
-    # Compare performance with training from scratch for link prediction
-    scratch_link_backbone = GNNModel(in_channels=16, hidden_channels=32, mid_channels=64)
-    scratch_link_model = fine_tune_link_prediction(scratch_link_backbone, data, epochs=50, lr=0.01, device='cpu')
-
-    logger.info("Comparison of pretraining vs training from scratch completed.")
+    # Run experiments
+    experiment_node_classification(data, task_labels, device)
+    experiment_link_prediction(data, device)
 
 
 # Main init
 if __name__ == '__main__':
     main()
+
