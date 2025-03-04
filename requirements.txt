@@ -1,4 +1,7 @@
 # requirements.txt
 torch-geometric
+torch-cluster
 torch
 networkx
+ogb
+gensim
