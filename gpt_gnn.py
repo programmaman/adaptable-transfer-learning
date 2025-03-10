@@ -1,4 +1,4 @@
-from .conv import *
+from conv import *
 import numpy as np
 from gensim.parsing.preprocessing import *
 
