@@ -107,6 +107,23 @@ def evaluate_model(model, data, labels):
 
     return loss.item(), accuracy
 
+def evaluate_gpt_gnn(model, data, labels):
+    """
+    Evaluate GPT-GNN model with correct argument structure.
+    """
+    model.eval()
+    data = data.to(device)
+    labels = labels.to(device)
+    loss_fn = nn.CrossEntropyLoss()
+
+    with torch.no_grad():
+        out = model(data.x, torch.zeros_like(data.x[:, 0]), None, data.edge_index, None)  # Ensure correct arguments
+        loss = loss_fn(out, labels)
+        predictions = out.argmax(dim=1)
+        accuracy = (predictions == labels).to(torch.float).mean().item()
+
+    return loss.item(), accuracy
+
 
 # Experiment
 def run_experiment():
@@ -118,7 +135,7 @@ def run_experiment():
     gcn_model = train_gcn(data, task_labels)
 
     # Evaluate models
-    gpt_loss, gpt_acc = evaluate_model(gpt_model, data, task_labels)
+    gpt_loss, gpt_acc = evaluate_gpt_gnn(gpt_model, data, task_labels)
     gcn_loss, gcn_acc = evaluate_model(gcn_model, data, task_labels)
 
     logger.info(f"GPT-GNN Model - Loss: {gpt_loss:.4f}, Accuracy: {gpt_acc:.4f}")
