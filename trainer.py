@@ -67,7 +67,7 @@ class Trainer:
         self.redundant_train_step = redundant_train_step
         self.checkpoint_path = checkpoint_path
 
-    def train(self, train_data, val_data, train_step_fn, eval_fn, epochs=50, log_interval=10):
+    def train(self, train_data, val_data, train_step_fn, eval_step_fn, epochs=50, log_interval=10):
         """
         Trains the model with early stopping and checkpointing.
 
@@ -75,7 +75,7 @@ class Trainer:
             train_data: Training dataset.
             val_data: Validation dataset.
             train_step_fn: Function to perform a training step.
-            eval_fn: Function to compute validation loss.
+            eval_step_fn: Function to compute validation loss.
             epochs: Maximum number of training epochs.
             log_interval: Interval for logging training loss.
         """
@@ -93,7 +93,7 @@ class Trainer:
             self.optimizer.step()
 
             # Validation Step
-            val_loss = eval_fn(self.model, val_data, self.device)
+            val_loss = eval_step_fn(self.model, val_data, self.device)
 
             if epoch % log_interval == 0:
                 logger.info(f"Epoch {epoch:03d} | Train Loss: {loss.item():.4f} | Val Loss: {val_loss:.4f}")
@@ -112,24 +112,3 @@ class Trainer:
                 break  # Stop training if no improvement for `redundant_train_step` epochs
 
         return self.model
-
-    def evaluate(self, eval_data, evaluate_fn):
-        """
-        Evaluates the model.
-
-        Args:
-            eval_data: Dataset for evaluation.
-            evaluate_fn: Function to compute evaluation metrics.
-
-        Returns:
-            metrics: Computed evaluation metrics.
-        """
-        if evaluate_fn is None:
-            logger.warning("No evaluate_fn provided. Skipping evaluation.")
-            return {}
-
-        self.model.eval()
-        with torch.no_grad():
-            metrics = evaluate_fn(self.model, eval_data, self.device)
-
-        return metrics
