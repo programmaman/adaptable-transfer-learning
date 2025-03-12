@@ -9,13 +9,13 @@ import torch.nn.functional as f
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class StructuralGnn(nn.Module):
+class StructuralGcn(nn.Module):
     """
     Graph Neural Network backbone for predicting structural features.
     This version outputs a single continuous value per node (for regression).
     """
     def __init__(self, in_channels: int, hidden_channels: int, mid_channels: int):
-        super(StructuralGnn, self).__init__()
+        super(StructuralGcn, self).__init__()
         self.conv1 = pyg_nn.GCNConv(in_channels, hidden_channels)
         self.conv2 = pyg_nn.GCNConv(hidden_channels, mid_channels)
         # Final layer outputs one continuous value per node.
@@ -34,7 +34,7 @@ class GnnClassifierHead(nn.Module):
     Classification head that fine-tunes a StructuralGnn backbone.
     It maps the backbone's 1D output to class logits.
     """
-    def __init__(self, pretrained_model: StructuralGnn, out_channels: int):
+    def __init__(self, pretrained_model: StructuralGcn, out_channels: int):
         super(GnnClassifierHead, self).__init__()
         self.backbone = pretrained_model
         self.fc = nn.Linear(1, out_channels)

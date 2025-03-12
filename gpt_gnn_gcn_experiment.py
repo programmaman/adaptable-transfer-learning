@@ -6,7 +6,7 @@ import logging
 import networkx as nx
 
 # Import both models
-from gpt_gnn import GPT_GNN, GNN
+from models.gpt_gnn import GPT_GNN, GNN
 from masked_pretrain import GNNModel, FineTuneGNN
 
 # Configure logging

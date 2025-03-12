@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.autograd import Variable
 from torch_geometric.nn import GCNConv, GATConv
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn.inits import glorot, uniform
