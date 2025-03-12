@@ -30,6 +30,9 @@ class GNNModel(nn.Module):
         return x
 
 
+
+
+
 def generate_synthetic_graph(num_nodes=200, num_edges=500, feature_dim=16, mask_fraction=0.2):
     """
     Generate a synthetic graph with random node features, edges, and masked nodes.

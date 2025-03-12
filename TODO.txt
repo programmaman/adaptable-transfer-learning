@@ -1,0 +1,5 @@
+1. Test the graphs on a few real datasets
+
+2. Look into long tail distribution and uniform distribution graphs
+
+3. Keep record of results in tables
