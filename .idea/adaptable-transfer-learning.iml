@@ -5,6 +5,10 @@
     <orderEntry type="jdk" jdkName="Remote Python 3.12.3 Docker (adaptable-transfer-learning-gnn:latest)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
+  <component name="PackageRequirementsSettings">
+    <option name="versionSpecifier" value="Don't specify version" />
+    <option name="keepMatchingSpecifier" value="false" />
+  </component>
   <component name="PyDocumentationSettings">
     <option name="format" value="PLAIN" />
     <option name="myDocStringFormat" value="Plain" />

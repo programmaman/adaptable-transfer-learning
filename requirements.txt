@@ -5,3 +5,5 @@ torch
 networkx
 ogb
 gensim
+numpy
+scikit-learn
