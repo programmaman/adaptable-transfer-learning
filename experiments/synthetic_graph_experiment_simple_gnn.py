@@ -1,89 +1,97 @@
 import torch
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from models.simple_gnn import SimpleGNN
-from experiment_utils import generate_synthetic_graph, generate_task_labels
-
-# Prepare data
-data = generate_synthetic_graph()
-labels = generate_task_labels(data)
-
-# Split for downstream classification
-num_nodes = data.num_nodes
-indices = torch.randperm(num_nodes)
-train_ratio, val_ratio = 0.6, 0.2
-train_cut = int(train_ratio * num_nodes)
-val_cut = int((train_ratio + val_ratio) * num_nodes)
-
-train_mask = torch.zeros(num_nodes, dtype=torch.bool)
-val_mask = torch.zeros(num_nodes, dtype=torch.bool)
-test_mask = torch.zeros(num_nodes, dtype=torch.bool)
-train_mask[indices[:train_cut]] = True
-val_mask[indices[train_cut:val_cut]] = True
-test_mask[indices[val_cut:]] = True
-
-# Initialize model
-in_dim = data.x.size(1)
-hidden_dim = 64
-out_dim = 1  # For pretraining regression
-num_classes = len(labels.unique())
-pretrain_model = SimpleGNN(in_channels=in_dim, hidden_channels=hidden_dim, out_channels=out_dim)
-
-# Pretraining — Structural regression
-pretrain_optimizer = torch.optim.Adam(pretrain_model.parameters(), lr=0.01, weight_decay=5e-4)
-regression_loss = torch.nn.MSELoss()
-
-print("\n=== Pretraining on Clustering Coefficient ===")
-for epoch in range(1, 101):
-    pretrain_model.train()
-    pretrain_optimizer.zero_grad()
-    output = pretrain_model(data.x, data.edge_index).squeeze()
-    loss = regression_loss(output, data.structural_targets)
-    loss.backward()
-    pretrain_optimizer.step()
-
-    if epoch % 10 == 0:
-        print(f"Epoch {epoch:03d} | Pretrain Loss: {loss.item():.4f}")
-
-# Fine-tuning — Classification
-class_model = SimpleGNN(in_channels=in_dim, hidden_channels=hidden_dim, out_channels=num_classes)
-
-# Load pretrained weights except for the final layer
-pretrained_dict = pretrain_model.state_dict()
-model_dict = class_model.state_dict()
-
-# Filter out layers with mismatched shapes (e.g., final layer)
-filtered_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict and v.shape == model_dict[k].shape}
-
-# Update and load
-model_dict.update(filtered_dict)
-class_model.load_state_dict(model_dict)
-
-# Optimizer and loss
-optimizer = torch.optim.Adam(class_model.parameters(), lr=0.01, weight_decay=5e-4)
-criterion = torch.nn.CrossEntropyLoss()
 
 
-def evaluate(model, data, labels, mask):
-    model.eval()
-    with torch.no_grad():
-        out = model(data.x, data.edge_index)
-        pred = out.argmax(dim=1)
-        acc = accuracy_score(labels[mask].cpu(), pred[mask].cpu())
-    return acc
+def run_gnn_pipeline(data, labels, hidden_dim=64, pretrain_epochs=100, finetune_epochs=100):
+    # Split for downstream classification
+    num_nodes = data.num_nodes
+    indices = torch.randperm(num_nodes)
+    train_ratio, val_ratio = 0.6, 0.2
+    train_cut = int(train_ratio * num_nodes)
+    val_cut = int((train_ratio + val_ratio) * num_nodes)
 
-print("\n=== Fine-tuning on Node Classification ===")
-for epoch in range(1, 101):
-    class_model.train()
-    optimizer.zero_grad()
-    out = class_model(data.x, data.edge_index)
-    loss = criterion(out[train_mask], labels[train_mask])
-    loss.backward()
-    optimizer.step()
+    train_mask = torch.zeros(num_nodes, dtype=torch.bool)
+    val_mask = torch.zeros(num_nodes, dtype=torch.bool)
+    test_mask = torch.zeros(num_nodes, dtype=torch.bool)
+    train_mask[indices[:train_cut]] = True
+    val_mask[indices[train_cut:val_cut]] = True
+    test_mask[indices[val_cut:]] = True
 
-    if epoch % 10 == 0:
-        val_acc = evaluate(class_model, data, labels, val_mask)
-        print(f"Epoch {epoch:03d} | Fine-tune Loss: {loss.item():.4f} | Val Acc: {val_acc:.4f}")
+    # Initialize model
+    in_dim = data.x.size(1)
+    out_dim = 1  # For pretraining regression
+    num_classes = len(labels.unique())
+    pretrain_model = SimpleGNN(in_channels=in_dim, hidden_channels=hidden_dim, out_channels=out_dim)
 
-# Final test accuracy
-test_acc = evaluate(class_model, data, labels, test_mask)
-print(f"\nFinal Test Accuracy: {test_acc:.4f}")
+    # Pretraining — Structural regression
+    pretrain_optimizer = torch.optim.Adam(pretrain_model.parameters(), lr=0.01, weight_decay=5e-4)
+    regression_loss = torch.nn.MSELoss()
+
+    print("\n=== Pretraining on Clustering Coefficient ===")
+    for epoch in range(1, pretrain_epochs + 1):
+        pretrain_model.train()
+        pretrain_optimizer.zero_grad()
+        output = pretrain_model(data.x, data.edge_index).squeeze()
+        loss = regression_loss(output, data.structural_targets)
+        loss.backward()
+        pretrain_optimizer.step()
+
+        if epoch % 10 == 0:
+            print(f"Epoch {epoch:03d} | Pretrain Loss: {loss.item():.4f}")
+
+    # Fine-tuning — Classification
+    class_model = SimpleGNN(in_channels=in_dim, hidden_channels=hidden_dim, out_channels=num_classes)
+
+    # Load pretrained weights except for the final layer
+    pretrained_dict = pretrain_model.state_dict()
+    model_dict = class_model.state_dict()
+    filtered_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict and v.shape == model_dict[k].shape}
+    model_dict.update(filtered_dict)
+    class_model.load_state_dict(model_dict)
+
+    optimizer = torch.optim.Adam(class_model.parameters(), lr=0.01, weight_decay=5e-4)
+    criterion = torch.nn.CrossEntropyLoss()
+
+    def evaluate(model, data, labels, mask, verbose=True):
+        model.eval()
+        with torch.no_grad():
+            out = model(data.x, data.edge_index)
+            pred = out.argmax(dim=1)
+            true = labels[mask]
+            pred_masked = pred[mask]
+
+            # Move to CPU for sklearn metrics
+            pred_masked = pred_masked.cpu()
+            true = true.cpu()
+
+            acc = accuracy_score(true, pred_masked)
+            precision = precision_score(true, pred_masked, average='macro', zero_division=0)
+            recall = recall_score(true, pred_masked, average='macro', zero_division=0)
+            f1 = f1_score(true, pred_masked, average='macro', zero_division=0)
+
+            if verbose:
+                print(f"  → Accuracy:  {acc:.4f}")
+                print(f"  → Precision: {precision:.4f}")
+                print(f"  → Recall:    {recall:.4f}")
+                print(f"  → F1 Score:  {f1:.4f}")
+
+            return acc  # or return a dict if you want more later
+
+    print("\n=== Fine-tuning on Node Classification ===")
+    for epoch in range(1, finetune_epochs + 1):
+        class_model.train()
+        optimizer.zero_grad()
+        out = class_model(data.x, data.edge_index)
+        loss = criterion(out[train_mask], labels[train_mask])
+        loss.backward()
+        optimizer.step()
+
+        if epoch % 10 == 0:
+            val_acc = evaluate(class_model, data, labels, val_mask)
+            print(f"Epoch {epoch:03d} | Fine-tune Loss: {loss.item():.4f} | Val Acc: {val_acc:.4f}")
+
+    test_acc = evaluate(class_model, data, labels, test_mask)
+    print(f"\nFinal Test Accuracy: {test_acc:.4f}")
+
+    return class_model, test_acc
