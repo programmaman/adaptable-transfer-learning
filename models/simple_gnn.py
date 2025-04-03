@@ -18,3 +18,4 @@ class SimpleGNN(nn.Module):
         x = f.relu(x)
         x = self.conv2(x, edge_index)
         return x
+

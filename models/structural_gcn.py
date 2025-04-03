@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch_geometric.nn as pyg_nn
 import torch.nn.functional as f
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
 # Logging
 logging.basicConfig(level=logging.INFO)
@@ -139,19 +140,21 @@ def fine_tune_link_prediction(model, data, epochs=50, lr=0.01, weight_decay=0.01
 
     return model
 
-def evaluate_model(model, data, labels, device=torch.device('cpu')):
-    """
-    Evaluate the classification model on the provided labels.
-    """
+def evaluate_model(model, data, labels, device):
     model.eval()
-    data = data.to(device)
-    labels = labels.to(device)
-    loss_fn = nn.CrossEntropyLoss()
-
     with torch.no_grad():
-        out = model(data.x, data.edge_index)
-        loss = loss_fn(out, labels)
-        predictions = out.argmax(dim=1)
-        accuracy = (predictions == labels).to(torch.float).mean().item()
+        out = model(data.x.to(device), data.edge_index.to(device))
+        preds = out.argmax(dim=1).cpu()
+        true = labels.cpu()
 
-    return loss.item(), accuracy
+        acc = accuracy_score(true, preds)
+        precision = precision_score(true, preds, average='macro', zero_division=0)
+        recall = recall_score(true, preds, average='macro', zero_division=0)
+        f1 = f1_score(true, preds, average='macro', zero_division=0)
+
+        print(f"  → Accuracy:  {acc:.4f}")
+        print(f"  → Precision: {precision:.4f}")
+        print(f"  → Recall:    {recall:.4f}")
+        print(f"  → F1 Score:  {f1:.4f}")
+
+        return 0.0, acc  # Placeholder for loss unless you track it elsewhere
