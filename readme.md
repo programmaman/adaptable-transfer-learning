@@ -26,3 +26,9 @@ This approach aims to leverage transfer learning to improve the efficiency and p
 Hopefully easily applyable to downstream tasks with less training
 
 Research question, does utilizing Graph structural properties subsume transfer learning tasks
+
+
+
+
+
+Try to build a loss function that has a high value when the model is wromg

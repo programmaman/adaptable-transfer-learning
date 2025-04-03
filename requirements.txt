@@ -7,3 +7,4 @@ ogb
 gensim
 numpy
 scikit-learn
+dgl
