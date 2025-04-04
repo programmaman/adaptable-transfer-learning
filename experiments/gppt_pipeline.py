@@ -1,9 +1,9 @@
 import time
-
 import dgl
 import numpy as np
 import torch
 from sklearn.model_selection import StratifiedShuffleSplit
+import torch.nn.functional as f
 
 import utils  # Utility functions: seed_torch, evaluate, get_init_info
 from models.gppt import GraphSAGE
@@ -91,7 +91,7 @@ def run_gppt_pipeline(data, labels,
             inputs = mfgs[0].srcdata['feat']
             lab = mfgs[-1].dstdata['label']
             logits = model(mfgs, inputs)
-            loss = F.cross_entropy(logits, lab)
+            loss = f.cross_entropy(logits, lab)
 
             loss = loss + lr_c * utils.constraint(device, model.get_mul_prompt())
             optimizer.zero_grad()
