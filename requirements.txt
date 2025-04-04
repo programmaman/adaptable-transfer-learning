@@ -8,3 +8,4 @@ gensim
 numpy
 scikit-learn
 dgl
+pandas

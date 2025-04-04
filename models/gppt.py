@@ -5,8 +5,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import dgl.function as fn
 import dgl
-from dgl import DGLGraph
-from dgl.data import register_data_args, load_data
 from dgl.nn.pytorch.conv import SAGEConv
 import dgl.nn.pytorch as dglnn
 import pandas as pd
@@ -85,11 +83,11 @@ class SAGE(nn.Module):
         # on each layer are of course splitted in batches.
         # TODO: can we standardize this?
         for l, layer in enumerate(self.layers):
-            y = th.zeros(g.num_nodes(), self.n_hidden if l != len(self.layers) - 1 else self.n_classes)
+            y = torch.zeros(g.num_nodes(), self.n_hidden if l != len(self.layers) - 1 else self.n_classes)
             sampler = dgl.dataloading.MultiLayerFullNeighborSampler(1)
             dataloader = dgl.dataloading.NodeDataLoader(
                 g,
-                th.arange(g.num_nodes()).to(g.device),
+                torch.arange(g.num_nodes()).to(g.device),
                 sampler,
                 device=device if num_workers == 0 else None,
                 batch_size=batch_size,
@@ -315,10 +313,6 @@ def main(args):
 
     print("Test Accuracy {:.4f}".format(np.mean(acc_all[-10:])))
 
-
-if __name__ == '__main__':
-    args = get_args.get_my_args()
-    main(args)
 
 
 

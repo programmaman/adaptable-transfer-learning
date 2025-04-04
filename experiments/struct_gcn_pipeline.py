@@ -8,6 +8,7 @@ from models.structural_gcn import (
     evaluate_model
 )
 
+
 def run_structural_gcn_pipeline(data, labels, hidden_dim=64, mid_dim=32, pretrain_epochs=100, finetune_epochs=100):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 

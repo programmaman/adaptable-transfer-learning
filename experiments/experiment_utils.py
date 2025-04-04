@@ -1,10 +1,8 @@
 import json
 
-import pandas as pd
-import torch
 import networkx as nx
 from sklearn.preprocessing import LabelEncoder
-from torch_geometric.data import Data
+
 
 def generate_synthetic_graph(num_nodes=1000, num_edges=1500, feature_dim=16):
     # Generate random node features
@@ -38,7 +36,6 @@ def generate_task_labels(data, num_classes=5):
     # Generate semi-structured labels based on node features
     # Use k-means clustering to assign labels based on feature similarity
     from sklearn.cluster import KMeans
-    import numpy as np
 
     x_np = data.x.cpu().numpy()
     kmeans = KMeans(n_clusters=num_classes, random_state=42).fit(x_np)

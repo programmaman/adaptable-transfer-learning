@@ -5,10 +5,11 @@ import torch
 from torch_geometric.utils import to_networkx
 
 from experiment_utils import generate_synthetic_graph, generate_task_labels, load_musae_facebook_dataset, load_email_eu_core_dataset
-from experiments.synthetic_graph_experiment_simple_gnn import run_gnn_pipeline
-from experiments.synthetic_graph_experiment_structural_gcn import run_structural_gcn_pipeline
-from experiments.synthetic_graph_experiment_gpt_gnn import run_gpt_gnn_pipeline
-from experiments.synthetic_graph_experiment_struct_gnn import run_structural_node2vec_pipeline
+from experiments.gnn_pipeline import run_gnn_pipeline
+from experiments.gppt_pipeline import run_gppt_pipeline
+from experiments.struct_gcn_pipeline import run_structural_gcn_pipeline
+from experiments.gpt_gnn_pipeline import run_gpt_gnn_pipeline
+from experiments.struct_gnn_pipeline import run_structural_node2vec_pipeline
 
 
 def run_synthetic_experiments():
@@ -28,6 +29,9 @@ def run_synthetic_experiments():
 
     print("\n========== [Synthetic] StructuralGNN (Node2Vec) ==========")
     structural_model, structural_classifier, structural_acc = run_structural_node2vec_pipeline(data, labels)
+
+    print("\n========== [Synthetic] GPPT-GNN ==========")
+    model, test_acc = run_gppt_pipeline(data, labels)
 
     print("\n========== [Synthetic] Summary ==========")
     print(f"[Synthetic] SimpleGNN Final Test Accuracy:       {simplegnn_test_acc:.4f}")

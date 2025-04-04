@@ -1,8 +1,9 @@
-import torch
 import numpy as np
-from sklearn.metrics import accuracy_score, confusion_matrix
+import torch
+from sklearn.metrics import confusion_matrix
 
-from models.gpt_gnn import GPT_GNN, GNN, Matcher, Classifier
+from models.gpt_gnn import GPT_GNN, GNN, Classifier
+
 
 def prepare_gpt_data(data):
     """
