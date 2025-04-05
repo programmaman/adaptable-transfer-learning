@@ -1,10 +1,10 @@
 import torch
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-from models.baselines import SimpleGNN
+from models.baselines import SimpleGraphSAGE  # Ensure this imports your SimpleGraphSAGE model
 
 
-def run_gnn_pipeline(data, labels, hidden_dim=64, pretrain_epochs=100, finetune_epochs=100):
-    # Split for downstream classification
+def run_graphsage_pipeline(data, labels, pretrain_epochs=100, finetune_epochs=100):
+    # Split the nodes into training, validation, and test sets
     num_nodes = data.num_nodes
     indices = torch.randperm(num_nodes)
     train_ratio, val_ratio = 0.6, 0.2
@@ -18,17 +18,19 @@ def run_gnn_pipeline(data, labels, hidden_dim=64, pretrain_epochs=100, finetune_
     val_mask[indices[train_cut:val_cut]] = True
     test_mask[indices[val_cut:]] = True
 
-    # Initialize model
+    # Define dimensions
     in_dim = data.x.size(1)
-    out_dim = 1  # For pretraining regression
+    out_dim = 1  # Pretraining: regression output (e.g., structural target)
     num_classes = len(labels.unique())
-    pretrain_model = SimpleGNN(in_channels=in_dim, hidden_channels=hidden_dim, out_channels=out_dim)
 
-    # Pretraining — Structural regression
+    # ---------------------
+    # Pretraining Stage
+    # ---------------------
+    print("\n=== Pretraining on Structural Regression ===")
+    pretrain_model = SimpleGraphSAGE(in_channels=in_dim, out_channels=out_dim)
     pretrain_optimizer = torch.optim.Adam(pretrain_model.parameters(), lr=0.01, weight_decay=5e-4)
     regression_loss = torch.nn.MSELoss()
 
-    print("\n=== Pretraining on Clustering Coefficient ===")
     for epoch in range(1, pretrain_epochs + 1):
         pretrain_model.train()
         pretrain_optimizer.zero_grad()
@@ -40,10 +42,14 @@ def run_gnn_pipeline(data, labels, hidden_dim=64, pretrain_epochs=100, finetune_
         if epoch % 10 == 0:
             print(f"Epoch {epoch:03d} | Pretrain Loss: {loss.item():.4f}")
 
-    # Fine-tuning — Classification
-    class_model = SimpleGNN(in_channels=in_dim, hidden_channels=hidden_dim, out_channels=num_classes)
+    # ---------------------
+    # Fine-tuning Stage (Node Classification)
+    # ---------------------
+    print("\n=== Fine-tuning on Node Classification ===")
+    # Initialize the classification model with output dimension equal to number of classes
+    class_model = SimpleGraphSAGE(in_channels=in_dim, out_channels=num_classes)
 
-    # Load pretrained weights except for the final layer
+    # Transfer pretrained weights except for the final layer parameters (if shape mismatches)
     pretrained_dict = pretrain_model.state_dict()
     model_dict = class_model.state_dict()
     filtered_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict and v.shape == model_dict[k].shape}
@@ -53,6 +59,7 @@ def run_gnn_pipeline(data, labels, hidden_dim=64, pretrain_epochs=100, finetune_
     optimizer = torch.optim.Adam(class_model.parameters(), lr=0.01, weight_decay=5e-4)
     criterion = torch.nn.CrossEntropyLoss()
 
+    # Define evaluation function
     def evaluate(model, data, labels, mask, verbose=True):
         model.eval()
         with torch.no_grad():
@@ -61,14 +68,10 @@ def run_gnn_pipeline(data, labels, hidden_dim=64, pretrain_epochs=100, finetune_
             true = labels[mask]
             pred_masked = pred[mask]
 
-            # Move to CPU for sklearn metrics
-            pred_masked = pred_masked.cpu()
-            true = true.cpu()
-
-            acc = accuracy_score(true, pred_masked)
-            precision = precision_score(true, pred_masked, average='macro', zero_division=0)
-            recall = recall_score(true, pred_masked, average='macro', zero_division=0)
-            f1 = f1_score(true, pred_masked, average='macro', zero_division=0)
+            acc = accuracy_score(true.cpu(), pred_masked.cpu())
+            precision = precision_score(true.cpu(), pred_masked.cpu(), average='macro', zero_division=0)
+            recall = recall_score(true.cpu(), pred_masked.cpu(), average='macro', zero_division=0)
+            f1 = f1_score(true.cpu(), pred_masked.cpu(), average='macro', zero_division=0)
 
             if verbose:
                 print(f"  → Accuracy:  {acc:.4f}")
@@ -76,9 +79,9 @@ def run_gnn_pipeline(data, labels, hidden_dim=64, pretrain_epochs=100, finetune_
                 print(f"  → Recall:    {recall:.4f}")
                 print(f"  → F1 Score:  {f1:.4f}")
 
-            return acc  # or return a dict if you want more later
+            return acc
 
-    print("\n=== Fine-tuning on Node Classification ===")
+    # Fine-tuning loop for node classification
     for epoch in range(1, finetune_epochs + 1):
         class_model.train()
         optimizer.zero_grad()
