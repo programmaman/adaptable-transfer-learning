@@ -3,7 +3,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from models.baselines import SimpleGNN
 
 
-def run_gnn_pipeline(data, labels, hidden_dim=64, pretrain_epochs=100, finetune_epochs=100):
+def run_gnn_classification_pipeline(data, labels, hidden_dim=64, pretrain_epochs=100, finetune_epochs=100):
     # Split for downstream classification
     num_nodes = data.num_nodes
     indices = torch.randperm(num_nodes)
@@ -22,7 +22,7 @@ def run_gnn_pipeline(data, labels, hidden_dim=64, pretrain_epochs=100, finetune_
     in_dim = data.x.size(1)
     out_dim = 1  # For pretraining regression
     num_classes = len(labels.unique())
-    pretrain_model = SimpleGNN(in_channels=in_dim, hidden_channels=hidden_dim, out_channels=out_dim)
+    pretrain_model = SimpleGNN(in_channels=in_dim, out_channels=out_dim)
 
     # Pretraining — Structural regression
     pretrain_optimizer = torch.optim.Adam(pretrain_model.parameters(), lr=0.01, weight_decay=5e-4)
@@ -41,7 +41,7 @@ def run_gnn_pipeline(data, labels, hidden_dim=64, pretrain_epochs=100, finetune_
             print(f"Epoch {epoch:03d} | Pretrain Loss: {loss.item():.4f}")
 
     # Fine-tuning — Classification
-    class_model = SimpleGNN(in_channels=in_dim, hidden_channels=hidden_dim, out_channels=num_classes)
+    class_model = SimpleGNN(in_channels=in_dim,  out_channels=num_classes)
 
     # Load pretrained weights except for the final layer
     pretrained_dict = pretrain_model.state_dict()
@@ -95,3 +95,5 @@ def run_gnn_pipeline(data, labels, hidden_dim=64, pretrain_epochs=100, finetune_
     print(f"\nFinal Test Accuracy: {test_acc:.4f}")
 
     return class_model, test_acc
+
+

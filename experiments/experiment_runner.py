@@ -6,8 +6,7 @@ from torch_geometric.utils import to_networkx
 
 from experiment_utils import generate_synthetic_graph, generate_task_labels, load_musae_facebook_dataset, load_email_eu_core_dataset
 from experiments.gat_pipeline import run_gat_pipeline
-from experiments.gnn_pipeline import run_gnn_pipeline
-from experiments.gppt_pipeline import run_gppt_pipeline
+from experiments.gnn_pipeline import run_gnn_classification_pipeline
 from experiments.graph_sage_pipeline import run_graphsage_pipeline
 from experiments.struct_gcn_pipeline import run_structural_gcn_pipeline
 from experiments.gpt_gnn_pipeline import run_gpt_gnn_pipeline
@@ -21,7 +20,7 @@ def run_synthetic_experiments():
     data, labels = generate_synthetic_graph()
 
     print("\n========== [Synthetic] SimpleGNN ==========")
-    simplegnn_model, simplegnn_test_acc = run_gnn_pipeline(data, labels)
+    simplegnn_model, simplegnn_test_acc = run_gnn_classification_pipeline(data, labels)
 
     print("\n========== [Synthetic] StructuralGCN ==========")
     structural_model, structural_loss, structural_gcn_acc = run_structural_gcn_pipeline(data, labels)
@@ -32,14 +31,12 @@ def run_synthetic_experiments():
     print("\n========== [Synthetic] StructuralGNN (Node2Vec) ==========")
     structural_model, structural_classifier, structural_acc = run_structural_node2vec_pipeline(data, labels)
 
-    print("\n========== [Synthetic] GPPT-GNN ==========")
-    model, test_acc = run_gppt_pipeline(data, labels)
+    print("\n========== [Synthetic] SimpleGraphSAGE ==========")
+    graphsage_model, graphsage_test_acc = run_graphsage_pipeline(data, labels)
 
     print("\n========== [Synthetic] SimpleGAT ==========")
     simplegat_model, simplegat_test_acc = run_gat_pipeline(data, labels)
 
-    print("\n========== [Synthetic] SimpleGraphSAGE ==========")
-    graphsage_model, graphsage_test_acc = run_graphsage_pipeline(data, labels)
 
     print("\n========== [Synthetic] Summary ==========")
     print(f"[Synthetic] SimpleGNN Final Test Accuracy:       {simplegnn_test_acc:.4f}")
@@ -48,7 +45,6 @@ def run_synthetic_experiments():
     print(f"[Synthetic] StructuralGNN Final Test Accuracy:   {structural_acc:.4f}")
     print(f"[Synthetic] SimpleGAT Final Test Accuracy:         {simplegat_test_acc:.4f}")
     print(f"[Synthetic] SimpleGraphSAGE Final Test Accuracy:   {graphsage_test_acc:.4f}")
-    print(f"[Synthetic] GPPT-GNN Final Test Accuracy:         {test_acc:.4f}")
 
 
 
@@ -66,7 +62,7 @@ def run_facebook_experiments(edge_path, features_path, target_path):
     )
 
     print("\n========== [Facebook] SimpleGNN ==========")
-    simplegnn_model, simplegnn_test_acc = run_gnn_pipeline(data, labels)
+    simplegnn_model, simplegnn_test_acc = run_gnn_classification_pipeline(data, labels)
 
     print("\n========== [Facebook] StructuralGCN ==========")
     structural_model, structural_loss, structural_gcn_acc = run_structural_gcn_pipeline(data, labels)
@@ -107,7 +103,7 @@ def run_email_eu_core_experiments(edge_path, label_path):
     )
 
     print("\n========== [Email-EU-Core] SimpleGNN ==========")
-    simplegnn_model, simplegnn_test_acc = run_gnn_pipeline(data, labels)
+    simplegnn_model, simplegnn_test_acc = run_gnn_classification_pipeline(data, labels)
 
     print("\n========== [Email-EU-Core] StructuralGCN ==========")
     structural_model, structural_loss, structural_gcn_acc = run_structural_gcn_pipeline(data, labels)

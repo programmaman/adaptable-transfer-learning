@@ -1,5 +1,6 @@
 import torch
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+import time
 
 
 def run_structural_node2vec_pipeline(
@@ -74,6 +75,7 @@ def run_structural_node2vec_pipeline(
     ).to(device)
 
     node_indices = torch.arange(num_nodes, device=device)
+    start_time = time.time()
 
     # --------------------------------------------------------------------------
     # Phase 1: Pre-train Node2Vec Embeddings
@@ -91,25 +93,43 @@ def run_structural_node2vec_pipeline(
     # Using link prediction, optional feature reconstruction, alignment, etc.
     # --------------------------------------------------------------------------
     print("\n=== Phase 2: Self-Supervised Pre-training the GNN ===")
-    pretrain_optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
+    print("\n=== Phase 2: Pre-training the Structural GNN (with supervision) ===")
+
+    # Initialize classifier earlier (so it learns during pretraining)
+    classifier = torch.nn.Linear(output_dim, labels.unique().numel()).to(device)
+    criterion = torch.nn.CrossEntropyLoss()
+
+    pretrain_optimizer = torch.optim.Adam(
+        list(model.parameters()) + list(classifier.parameters()),
+        lr=0.01, weight_decay=5e-4
+    )
 
     for epoch in range(full_pretrain_epochs):
         model.train()
+        classifier.train()
         pretrain_optimizer.zero_grad()
-        # This call returns (embeddings, total_loss) for the tasks you enable:
-        _, pretrain_loss = model.forward_and_loss(
+
+        # Forward with classification + optional tasks
+        embeddings, pretrain_loss = model.forward_and_loss(
             data,
-            neg_sample_size=5,  # e.g. 5 negative edges per positive
-            do_node_class=False,  # no classification yet
-            do_linkpred=do_linkpred,  # link prediction
-            do_featrec=do_featrec,  # feature reconstruction
-            do_n2v_align=do_n2v_align  # align GNN & node2vec embeddings
+            neg_sample_size=5,
+            do_node_class=True,
+            do_linkpred=do_linkpred,
+            do_featrec=do_featrec,
+            do_n2v_align=do_n2v_align
         )
-        pretrain_loss.backward()
+
+        # Supervised classification loss
+        logits = classifier(embeddings)
+        cls_loss = criterion(logits[train_mask], labels[train_mask].to(logits.device))
+        total_loss = pretrain_loss + cls_loss  # Combine supervised + SSL
+
+        total_loss.backward()
         pretrain_optimizer.step()
 
         if epoch % 10 == 0:
-            print(f"[Pretrain Epoch {epoch:03d}] Loss: {pretrain_loss.item():.4f}")
+            print(
+                f"[Pretrain Epoch {epoch:03d}] Total Loss: {total_loss.item():.4f} | Cls: {cls_loss.item():.4f} | SSL: {pretrain_loss.item():.4f}")
 
     def evaluate(model, classifier, data_x, edge_index, node_indices, labels, mask, verbose=True):
         model.eval()
@@ -134,6 +154,7 @@ def run_structural_node2vec_pipeline(
                 print(f"  → F1 Score:  {f1:.4f}")
 
             return acc  # Keep returning acc unless you want to return all metrics
+
 
     # --------------------------------------------------------------------------
     # Phase 3: Fine-tune for Node Classification
@@ -176,6 +197,10 @@ def run_structural_node2vec_pipeline(
     # --------------------------------------------------------------------------
     # Final Test Evaluation
     # --------------------------------------------------------------------------
+
+    n2v_time = time.time() - start_time
+    print(f"→ Training Time: {n2v_time:.2f} seconds")
+
     model.eval()
     classifier.eval()
     with torch.no_grad():

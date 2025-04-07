@@ -92,7 +92,7 @@ class StructuralGNN(nn.Module):
             self.gat_layer = None
 
         # Final linear to produce "base" embeddings of dimension output_dim
-        self.output_layer = nn.Linear(hidden_dim, output_dim)
+        self.final_sage = pyg_nn.SAGEConv(hidden_dim, output_dim)
 
         # Classification head (optional)
         self.num_classes = num_classes
@@ -147,7 +147,14 @@ class StructuralGNN(nn.Module):
         gate_weights = self.gate(combined)
         x_proj = self.input_proj(combined)
         # Gating
-        gated_x = gate_weights * x_proj + (1 - gate_weights) * x_proj
+        raw_x = x[node_indices]
+        raw_proj = self.input_proj(torch.cat([
+            raw_x,
+            torch.zeros(raw_x.size(0), self.node2vec_proj.out_features, device=raw_x.device)
+        ], dim=-1))
+
+        gated_x = gate_weights * x_proj + (1 - gate_weights) * raw_proj
+
         # The line above is effectively the same as gate * x_proj, but
         # you might want to mix in the "ungated" part if needed.
 
@@ -167,7 +174,8 @@ class StructuralGNN(nn.Module):
             out = F.relu(out)
 
         # 6) Final linear projection
-        out = self.output_layer(out)
+        # Final projection
+        out = self.final_sage(out, edge_index)
         return out
 
     ###########################################################################
