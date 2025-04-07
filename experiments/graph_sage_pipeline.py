@@ -1,11 +1,12 @@
 import torch
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from models.baselines import SimpleGraphSAGE
+from utils import get_device
 
 
 def run_graphsage_pipeline(data, labels, pretrain_epochs=100, finetune_epochs=100):
     # Set device and move data and labels to the same device
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = get_device()
     data = data.to(device)
     labels = labels.to(device)
 

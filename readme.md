@@ -32,3 +32,7 @@ Research question, does utilizing Graph structural properties subsume transfer l
 
 
 Try to build a loss function that has a high value when the model is wromg
+
+
+
+Future work: Multi Loss Model that uses each possible task loss seperately and combines them when they show overlap

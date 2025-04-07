@@ -54,7 +54,7 @@ class StructuralGNN(nn.Module):
     def __init__(
         self,
         num_nodes,
-        edge_index,           # Global edge_index (COO) for Node2Vec, GNN
+        edge_index,           # Global edge_index Node2Vec
         input_dim,            # Node feature dimension
         hidden_dim=64,
         output_dim=32,        # Base embedding dimension after the final layer
@@ -118,7 +118,7 @@ class StructuralGNN(nn.Module):
             nn.Linear(hidden_dim, 1)  # scalar score
         )
 
-        # Optionally align final embeddings back to Node2Vec
+        # align final embeddings back to Node2Vec
         self.align_proj_gnn = nn.Linear(output_dim, hidden_dim)
         self.align_proj_n2v = nn.Linear(embedding_dim, hidden_dim)
 
@@ -154,9 +154,6 @@ class StructuralGNN(nn.Module):
         ], dim=-1))
 
         gated_x = gate_weights * x_proj + (1 - gate_weights) * raw_proj
-
-        # The line above is effectively the same as gate * x_proj, but
-        # you might want to mix in the "ungated" part if needed.
 
         # 3) We need a "full" representation for all nodes. We'll put gated_x
         #    back into the correct shape if node_indices is a subset.
@@ -291,18 +288,6 @@ class StructuralGNN(nn.Module):
     def forward_and_loss(self, data, neg_sample_size=5, do_node_class=False,
                          do_linkpred=False, do_featrec=False,
                          do_n2v_align=False):
-        """
-        Example function that computes embeddings and
-        returns a combined loss for multiple tasks.
-
-        data should have:
-          - data.x: node features [num_nodes, input_dim]
-          - data.edge_index: [2, num_edges]
-          - data.y (optional): node labels
-          - data.node2vec_raw (optional): node2vec embeddings if you want alignment
-
-        Adjust as needed for your training pipeline.
-        """
         edge_index = data.edge_index
         x = data.x
         embeddings = self.forward(x, edge_index)  # [num_nodes, output_dim]

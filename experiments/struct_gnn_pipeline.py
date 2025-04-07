@@ -2,6 +2,8 @@ import torch
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import time
 
+from utils import get_device
+
 
 def run_structural_node2vec_pipeline(
         data,
@@ -11,7 +13,7 @@ def run_structural_node2vec_pipeline(
         embedding_dim=128,
         num_layers=2,
         node2vec_pretrain_epochs=100,
-        full_pretrain_epochs=50,
+        full_pretrain_epochs=100,
         finetune_epochs=100,
         do_linkpred=True,
         do_n2v_align=True,
@@ -33,7 +35,7 @@ def run_structural_node2vec_pipeline(
     Returns:
         model, classifier, test_acc
     """
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = get_device()
     # Print Device
     print(f"Using device: {device}")
 
@@ -92,7 +94,6 @@ def run_structural_node2vec_pipeline(
     # Phase 2: Pre-train Full Model (Self-Supervised)
     # Using link prediction, optional feature reconstruction, alignment, etc.
     # --------------------------------------------------------------------------
-    print("\n=== Phase 2: Self-Supervised Pre-training the GNN ===")
     print("\n=== Phase 2: Pre-training the Structural GNN (with supervision) ===")
 
     # Initialize classifier earlier (so it learns during pretraining)

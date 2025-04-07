@@ -6,7 +6,7 @@ from torch_geometric.utils import to_networkx
 
 from experiment_utils import generate_synthetic_graph, generate_task_labels, load_musae_facebook_dataset, load_email_eu_core_dataset
 from experiments.gat_pipeline import run_gat_pipeline
-from experiments.gnn_pipeline import run_gnn_classification_pipeline
+from experiments.gnn_pipeline import run_gnn_pipeline
 from experiments.graph_sage_pipeline import run_graphsage_pipeline
 from experiments.struct_gcn_pipeline import run_structural_gcn_pipeline
 from experiments.gpt_gnn_pipeline import run_gpt_gnn_pipeline
@@ -20,7 +20,7 @@ def run_synthetic_experiments():
     data, labels = generate_synthetic_graph()
 
     print("\n========== [Synthetic] SimpleGNN ==========")
-    simplegnn_model, simplegnn_test_acc = run_gnn_classification_pipeline(data, labels)
+    simplegnn_model, simplegnn_test_acc = run_gnn_pipeline(data, labels)
 
     print("\n========== [Synthetic] StructuralGCN ==========")
     structural_model, structural_loss, structural_gcn_acc = run_structural_gcn_pipeline(data, labels)
@@ -62,7 +62,7 @@ def run_facebook_experiments(edge_path, features_path, target_path):
     )
 
     print("\n========== [Facebook] SimpleGNN ==========")
-    simplegnn_model, simplegnn_test_acc = run_gnn_classification_pipeline(data, labels)
+    simplegnn_model, simplegnn_test_acc = run_gnn_pipeline(data, labels)
 
     print("\n========== [Facebook] StructuralGCN ==========")
     structural_model, structural_loss, structural_gcn_acc = run_structural_gcn_pipeline(data, labels)
@@ -103,7 +103,7 @@ def run_email_eu_core_experiments(edge_path, label_path):
     )
 
     print("\n========== [Email-EU-Core] SimpleGNN ==========")
-    simplegnn_model, simplegnn_test_acc = run_gnn_classification_pipeline(data, labels)
+    simplegnn_model, simplegnn_test_acc = run_gnn_pipeline(data, labels)
 
     print("\n========== [Email-EU-Core] StructuralGCN ==========")
     structural_model, structural_loss, structural_gcn_acc = run_structural_gcn_pipeline(data, labels)
