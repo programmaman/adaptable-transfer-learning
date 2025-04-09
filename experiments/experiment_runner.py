@@ -20,7 +20,7 @@ def run_synthetic_experiments():
     data, labels = generate_synthetic_graph()
 
     print("\n========== [Synthetic] SimpleGNN ==========")
-    simplegnn_model, simplegnn_test_acc = run_gnn_pipeline(data, labels)
+    simplegnn_model, simple_gnn_test_results, simple_gnn_lp_results = run_gnn_pipeline(data, labels)
 
     print("\n========== [Synthetic] StructuralGCN ==========")
     structural_model, structural_loss, structural_gcn_acc = run_structural_gcn_pipeline(data, labels)
@@ -35,15 +35,15 @@ def run_synthetic_experiments():
     graphsage_model, graphsage_test_acc = run_graphsage_pipeline(data, labels)
 
     print("\n========== [Synthetic] SimpleGAT ==========")
-    simplegat_model, simplegat_test_acc = run_gat_pipeline(data, labels)
+    simplegat_model, classification_results, lp_results = run_gat_pipeline(data, labels)
 
 
     print("\n========== [Synthetic] Summary ==========")
-    print(f"[Synthetic] SimpleGNN Final Test Accuracy:       {simplegnn_test_acc:.4f}")
+    print(f"[Synthetic] SimpleGNN Final Test Accuracy:       {simple_gnn_test_results, simple_gnn_lp_results}")
     print(f"[Synthetic] StructuralGCN Final Val Accuracy:    {structural_gcn_acc:.4f} | Loss: {structural_loss:.4f}")
     print(f"[Synthetic] GPT-GNN Final Test Accuracy:         {gpt_test_acc:.4f}")
     print(f"[Synthetic] StructuralGNN Final Test Accuracy:   {structural_acc:.4f}")
-    print(f"[Synthetic] SimpleGAT Final Test Accuracy:         {simplegat_test_acc:.4f}")
+    print(f"[Synthetic] SimpleGAT Final Test Results:         {classification_results, lp_results}")
     print(f"[Synthetic] SimpleGraphSAGE Final Test Accuracy:   {graphsage_test_acc:.4f}")
 
 

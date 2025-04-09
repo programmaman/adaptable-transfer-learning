@@ -132,10 +132,31 @@ def run_structural_node2vec_pipeline(
             print(
                 f"[Pretrain Epoch {epoch:03d}] Total Loss: {total_loss.item():.4f} | Cls: {cls_loss.item():.4f} | SSL: {pretrain_loss.item():.4f}")
 
+    from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, \
+        average_precision_score
+
     def evaluate(model, classifier, data_x, edge_index, node_indices, labels, mask, verbose=True):
+        """
+        Evaluates both node classification and link prediction performance for the model.
+
+        Args:
+            model: The GNN model (StructuralGNN).
+            classifier: The classifier head.
+            data_x: The node features.
+            edge_index: The graph structure (edge indices).
+            node_indices: Indices of nodes to evaluate.
+            labels: The node labels.
+            mask: The mask for train/validation/test split.
+            verbose: Whether to print the evaluation metrics.
+
+        Returns:
+            metrics_dict: A dictionary containing classification metrics (Accuracy, Precision, Recall, F1, AUC).
+        """
+        # Node Classification Evaluation
         model.eval()
         classifier.eval()
         with torch.no_grad():
+            # Forward pass through the GNN and classifier
             logits = classifier(model(data_x, edge_index, node_indices))
             preds = logits[mask].argmax(dim=1)
             true = labels[mask]
@@ -143,20 +164,100 @@ def run_structural_node2vec_pipeline(
             preds = preds.cpu()
             true = true.cpu()
 
+            # Metrics calculation
             acc = accuracy_score(true, preds)
             precision = precision_score(true, preds, average='macro', zero_division=0)
             recall = recall_score(true, preds, average='macro', zero_division=0)
             f1 = f1_score(true, preds, average='macro', zero_division=0)
 
+            # Optionally compute AUC if it's a multi-class classification problem
+            auc = None
+            try:
+                auc = roc_auc_score(true, preds, multi_class='ovr', average='macro')
+            except ValueError:
+                auc = None
+
+            # Print results if verbose
             if verbose:
                 print(f"  → Accuracy:  {acc:.4f}")
                 print(f"  → Precision: {precision:.4f}")
                 print(f"  → Recall:    {recall:.4f}")
                 print(f"  → F1 Score:  {f1:.4f}")
+                if auc is not None:
+                    print(f"  → AUC (OvR): {auc:.4f}")
 
-            return acc  # Keep returning acc unless you want to return all metrics
+            metrics_dict = {
+                "Accuracy": acc,
+                "Precision": precision,
+                "Recall": recall,
+                "F1": f1,
+                "AUC": auc
+            }
 
+        return metrics_dict
 
+    def evaluate_link_prediction(model, data, rem_edge_list, ori_edge_list, device):
+        """
+        Evaluates link prediction performance.
+
+        Args:
+            model: The trained model.
+            data: The input graph data.
+            rem_edge_list: Removed edges used for link prediction.
+            ori_edge_list: Original edges for context.
+            device: The device to run on (CPU or GPU).
+
+        Returns:
+            lp_results: A dictionary containing link prediction metrics (AUC, AP, etc.).
+        """
+        model.eval()
+        with torch.no_grad():
+            emb = model(
+                data.x.to(device),
+                data.node_type.to(device),
+                data.edge_time.to(device),
+                data.edge_index.to(device),
+                data.edge_type.to(device)
+            )
+
+        # Retrieve positive and negative test edges (binary classification)
+        pos_edges = rem_edge_list[0][0].to(device)
+        neg_edges = model.sample_negative_edges(pos_edges, data.x.size(0)).to(device)
+
+        def score(u, v): return (emb[u] * emb[v]).sum(dim=-1)
+
+        pos_scores = score(pos_edges[:, 0], pos_edges[:, 1])
+        neg_scores = score(neg_edges[:, 0], neg_edges[:, 1])
+
+        scores = torch.cat([pos_scores, neg_scores])
+        labels = torch.cat([torch.ones_like(pos_scores), torch.zeros_like(neg_scores)])
+        preds = (scores > 0).float()
+
+        acc = accuracy_score(labels.cpu(), preds.cpu())
+        precision = precision_score(labels.cpu(), preds.cpu(), zero_division=0)
+        recall = recall_score(labels.cpu(), preds.cpu(), zero_division=0)
+        f1 = f1_score(labels.cpu(), preds.cpu(), zero_division=0)
+        auc = roc_auc_score(labels.cpu(), scores.cpu())
+        ap = average_precision_score(labels.cpu(), scores.cpu())
+
+        print(f"\n=== Link Prediction Evaluation ===")
+        print(f"  → Accuracy:  {acc:.4f}")
+        print(f"  → Precision: {precision:.4f}")
+        print(f"  → Recall:    {recall:.4f}")
+        print(f"  → F1 Score:  {f1:.4f}")
+        print(f"  → AUC:       {auc:.4f}")
+        print(f"  → AP:        {ap:.4f}")
+
+        lp_results = {
+            "LP-Accuracy": acc,
+            "LP-Precision": precision,
+            "LP-Recall": recall,
+            "LP-F1": f1,
+            "LP-AUC": auc,
+            "LP-AP": ap
+        }
+
+        return lp_results
     # --------------------------------------------------------------------------
     # Phase 3: Fine-tune for Node Classification
     # --------------------------------------------------------------------------
