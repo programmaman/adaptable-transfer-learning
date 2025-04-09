@@ -1,5 +1,6 @@
 import torch
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, \
+    average_precision_score
 from models.baselines import SimpleGraphSAGE
 from utils import get_device
 
@@ -65,10 +66,14 @@ def run_graphsage_pipeline(data, labels, pretrain_epochs=100, finetune_epochs=10
     criterion = torch.nn.CrossEntropyLoss()
 
     def evaluate(model, data, labels, mask, verbose=True):
+        """
+        Evaluates node classification performance.
+        """
         model.eval()
         with torch.no_grad():
+            # Get model output (logits) and make predictions
             out = model(data.x, data.edge_index)
-            pred = out.argmax(dim=1)
+            pred = out.argmax(dim=1)  # Get the predicted class
             true = labels[mask]
             pred_masked = pred[mask]
 
@@ -76,18 +81,87 @@ def run_graphsage_pipeline(data, labels, pretrain_epochs=100, finetune_epochs=10
             pred_masked = pred_masked.cpu()
             true = true.cpu()
 
+            # Classification metrics
             acc = accuracy_score(true, pred_masked)
             precision = precision_score(true, pred_masked, average='macro', zero_division=0)
             recall = recall_score(true, pred_masked, average='macro', zero_division=0)
             f1 = f1_score(true, pred_masked, average='macro', zero_division=0)
+
+            # Optional AUC calculation (only if multi-class)
+            try:
+                auc = roc_auc_score(true, out.cpu(), multi_class='ovr', average='macro')
+            except ValueError:
+                auc = None
 
             if verbose:
                 print(f"  → Accuracy:  {acc:.4f}")
                 print(f"  → Precision: {precision:.4f}")
                 print(f"  → Recall:    {recall:.4f}")
                 print(f"  → F1 Score:  {f1:.4f}")
+                if auc is not None:
+                    print(f"  → AUC (OvR): {auc:.4f}")
 
-            return acc
+            return {
+                "Accuracy": acc,
+                "Precision": precision,
+                "Recall": recall,
+                "F1": f1,
+                "AUC": auc
+            }
+
+    def evaluate_link_prediction(model, data, rem_edge_list, ori_edge_list, device):
+        """
+        Evaluates link prediction performance.
+        """
+        model.eval()
+        with torch.no_grad():
+            # Get node embeddings from the model
+            emb = model(data.x.to(device), data.node_type.to(device), data.edge_time.to(device),
+                        data.edge_index.to(device), data.edge_type.to(device))
+
+        # Retrieve positive and negative test edges (binary classification)
+        pos_edges = rem_edge_list[0][0].to(device)
+        neg_edges = model.sample_negative_edges(pos_edges, data.x.size(0)).to(device)
+
+        # Define a function to score edges (dot product of node embeddings)
+        def score(u, v):
+            return (emb[u] * emb[v]).sum(dim=-1)
+
+        # Compute scores for positive and negative edges
+        pos_scores = score(pos_edges[:, 0], pos_edges[:, 1])
+        neg_scores = score(neg_edges[:, 0], neg_edges[:, 1])
+
+        # Combine scores and labels (1 for positive edges, 0 for negative edges)
+        scores = torch.cat([pos_scores, neg_scores])
+        labels = torch.cat([torch.ones_like(pos_scores), torch.zeros_like(neg_scores)])
+
+        # Predict based on the score threshold (positive if score > 0)
+        preds = (scores > 0).float()
+
+        # Compute metrics
+        acc = accuracy_score(labels.cpu(), preds.cpu())
+        precision = precision_score(labels.cpu(), preds.cpu(), zero_division=0)
+        recall = recall_score(labels.cpu(), preds.cpu(), zero_division=0)
+        f1 = f1_score(labels.cpu(), preds.cpu(), zero_division=0)
+        auc = roc_auc_score(labels.cpu(), scores.cpu())
+        ap = average_precision_score(labels.cpu(), scores.cpu())
+
+        print(f"\n=== Link Prediction ===")
+        print(f"  → Accuracy:  {acc:.4f}")
+        print(f"  → Precision: {precision:.4f}")
+        print(f"  → Recall:    {recall:.4f}")
+        print(f"  → F1 Score:  {f1:.4f}")
+        print(f"  → AUC:       {auc:.4f}")
+        print(f"  → AP:        {ap:.4f}")
+
+        return {
+            "LP-Accuracy": acc,
+            "LP-Precision": precision,
+            "LP-Recall": recall,
+            "LP-F1": f1,
+            "LP-AUC": auc,
+            "LP-AP": ap
+        }
 
     for epoch in range(1, finetune_epochs + 1):
         class_model.train()
@@ -102,7 +176,9 @@ def run_graphsage_pipeline(data, labels, pretrain_epochs=100, finetune_epochs=10
             val_acc = evaluate(class_model, data, labels, val_mask)
             print(f"Epoch {epoch:03d} | Val Acc: {val_acc:.4f}")
 
-    test_acc = evaluate(class_model, data, labels, test_mask)
-    print(f"\nFinal Test Accuracy: {test_acc:.4f}")
+    classifier_results = evaluate(class_model, data, labels, test_mask)
+    lp_results = evaluate_link_prediction(class_model, data, data.rem_edge_list, data.ori_edge_list, device)
+    print(f"\nFinal Classifier Test Accuracy: {classifier_results['Accuracy']:.4f}")
+    print(f"Final Link Prediction Test Accuracy: {lp_results['LP-Accuracy']:.4f}")
 
-    return class_model, test_acc
+    return class_model, classifier_results, lp_results

@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, roc_auc_score, average_precision_score
 
 from models.gpt_gnn import GPT_GNN, GNN, Classifier
 
@@ -47,25 +47,95 @@ def evaluate_classifier(classifier, gnn_model, data, labels, mask, device, verbo
             data.edge_index.to(device),
             data.edge_type.to(device)
         )
-        out = classifier(node_emb)
-        pred = out.argmax(dim=1).cpu()
-        mask = mask.cpu()
-        true = labels.cpu()[mask]
-        pred_masked = pred[mask]
+        logits = classifier(node_emb)
+        probs = torch.softmax(logits, dim=1)
 
-        acc = accuracy_score(true, pred_masked)
-        precision = precision_score(true, pred_masked, average='macro', zero_division=0)
-        recall = recall_score(true, pred_masked, average='macro', zero_division=0)
-        f1 = f1_score(true, pred_masked, average='macro', zero_division=0)
+        preds = probs.argmax(dim=1)
+        true = labels[mask]
+        probs_masked = probs[mask]
+        pred_masked = preds[mask]
+
+        # Move to CPU
+        true_cpu = true.cpu()
+        pred_cpu = pred_masked.cpu()
+        probs_cpu = probs_masked.cpu()
+
+        acc = accuracy_score(true_cpu, pred_cpu)
+        precision = precision_score(true_cpu, pred_cpu, average='macro', zero_division=0)
+        recall = recall_score(true_cpu, pred_cpu, average='macro', zero_division=0)
+        f1 = f1_score(true_cpu, pred_cpu, average='macro', zero_division=0)
+
+        try:
+            auc = roc_auc_score(true_cpu, probs_cpu, multi_class='ovr', average='macro')
+        except ValueError:
+            auc = None
 
         if verbose:
+            print(f"\n=== GPT-GNN Node Classification ===")
             print(f"  → Accuracy:  {acc:.4f}")
             print(f"  → Precision: {precision:.4f}")
             print(f"  → Recall:    {recall:.4f}")
             print(f"  → F1 Score:  {f1:.4f}")
+            if auc is not None:
+                print(f"  → AUC (OvR): {auc:.4f}")
+            print("\n  → Classification Report:")
+            print(classification_report(true_cpu, pred_cpu, digits=4))
 
-        return acc, pred_masked, true
+        return {
+            "Accuracy": acc,
+            "Precision": precision,
+            "Recall": recall,
+            "F1": f1,
+            "AUC": auc
+        }
 
+def evaluate_gpt_link_prediction(model, data, rem_edge_list, ori_edge_list, device):
+    model.eval()
+    with torch.no_grad():
+        emb = model(
+            data.x.to(device),
+            data.node_type.to(device),
+            data.edge_time.to(device),
+            data.edge_index.to(device),
+            data.edge_type.to(device)
+        )
+
+    # Retrieve positive and negative test edges (binary classification)
+    pos_edges = rem_edge_list[0][0].to(device)
+    neg_edges = model.sample_negative_edges(pos_edges, data.x.size(0)).to(device)
+
+    def score(u, v): return (emb[u] * emb[v]).sum(dim=-1)
+
+    pos_scores = score(pos_edges[:, 0], pos_edges[:, 1])
+    neg_scores = score(neg_edges[:, 0], neg_edges[:, 1])
+
+    scores = torch.cat([pos_scores, neg_scores])
+    labels = torch.cat([torch.ones_like(pos_scores), torch.zeros_like(neg_scores)])
+    preds = (scores > 0).float()
+
+    acc = accuracy_score(labels.cpu(), preds.cpu())
+    precision = precision_score(labels.cpu(), preds.cpu(), zero_division=0)
+    recall = recall_score(labels.cpu(), preds.cpu(), zero_division=0)
+    f1 = f1_score(labels.cpu(), preds.cpu(), zero_division=0)
+    auc = roc_auc_score(labels.cpu(), scores.cpu())
+    ap = average_precision_score(labels.cpu(), scores.cpu())
+
+    print(f"\n=== GPT-GNN Link Prediction ===")
+    print(f"  → Accuracy:  {acc:.4f}")
+    print(f"  → Precision: {precision:.4f}")
+    print(f"  → Recall:    {recall:.4f}")
+    print(f"  → F1 Score:  {f1:.4f}")
+    print(f"  → AUC:       {auc:.4f}")
+    print(f"  → AP:        {ap:.4f}")
+
+    return {
+        "LP-Accuracy": acc,
+        "LP-Precision": precision,
+        "LP-Recall": recall,
+        "LP-F1": f1,
+        "LP-AUC": auc,
+        "LP-AP": ap
+    }
 
 def run_gpt_gnn_pipeline(data, labels, hidden_dim=64, num_layers=2, num_heads=2,
 
@@ -166,14 +236,17 @@ def run_gpt_gnn_pipeline(data, labels, hidden_dim=64, num_layers=2, num_heads=2,
 
     # Final evaluation
     print("\n=== Final Evaluation on Test Set ===")
-    test_acc, test_preds, test_labels = evaluate_classifier(classifier, model, data, labels, test_mask, device)
+    classification_results = evaluate_classifier(classifier, model, data, labels, test_mask, device)
 
     print("\n=== Classification Report ===")
-    print(classification_report(test_labels, test_preds, digits=4))
+    print(classification_report(labels[test_mask].cpu(), classification_results['preds'].cpu(), digits=4))
 
     print("=== Confusion Matrix ===")
-    print(confusion_matrix(test_labels, test_preds))
+    print(confusion_matrix(labels[test_mask].cpu(), classification_results['preds'].cpu()))
 
-    print(f"\nFinal Test Accuracy: {test_acc:.4f}")
+    print(f"\nFinal Test Accuracy: {classification_results['Accuracy']:.4f}")
 
-    return classifier, test_acc
+    # Link Prediction Evaluation
+    lp_results = evaluate_gpt_link_prediction(model, data, rem_edge_list, ori_edge_list, device)
+
+    return classifier, classification_results, lp_results

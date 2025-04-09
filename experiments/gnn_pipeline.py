@@ -1,6 +1,8 @@
 import torch
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report, \
+    average_precision_score, roc_auc_score
 from models.baselines import SimpleGNN
+import torch.nn.functional as f
 
 
 def run_gnn_pipeline(data, labels, pretrain_epochs=100, finetune_epochs=100):
@@ -56,27 +58,48 @@ def run_gnn_pipeline(data, labels, pretrain_epochs=100, finetune_epochs=100):
     def evaluate(model, data, labels, mask, verbose=True):
         model.eval()
         with torch.no_grad():
-            out = model(data.x, data.edge_index)
-            pred = out.argmax(dim=1)
+            logits = model(data.x, data.edge_index)
+            probs = f.softmax(logits, dim=1)
+
+            pred = probs.argmax(dim=1)
             true = labels[mask]
             pred_masked = pred[mask]
+            probs_masked = probs[mask]
 
-            # Move to CPU for sklearn metrics
-            pred_masked = pred_masked.cpu()
-            true = true.cpu()
+            # Move to CPU
+            true_cpu = true.cpu()
+            pred_cpu = pred_masked.cpu()
+            probs_cpu = probs_masked.cpu()
 
-            acc = accuracy_score(true, pred_masked)
-            precision = precision_score(true, pred_masked, average='macro', zero_division=0)
-            recall = recall_score(true, pred_masked, average='macro', zero_division=0)
-            f1 = f1_score(true, pred_masked, average='macro', zero_division=0)
+            # Metrics
+            acc = accuracy_score(true_cpu, pred_cpu)
+            precision = precision_score(true_cpu, pred_cpu, average='macro', zero_division=0)
+            recall = recall_score(true_cpu, pred_cpu, average='macro', zero_division=0)
+            f1 = f1_score(true_cpu, pred_cpu, average='macro', zero_division=0)
+
+            try:
+                auc = roc_auc_score(true_cpu, probs_cpu, multi_class='ovr', average='macro')
+            except ValueError:
+                auc = None
 
             if verbose:
+                print("\n=== Node Classification Evaluation ===")
                 print(f"  → Accuracy:  {acc:.4f}")
                 print(f"  → Precision: {precision:.4f}")
                 print(f"  → Recall:    {recall:.4f}")
                 print(f"  → F1 Score:  {f1:.4f}")
+                if auc is not None:
+                    print(f"  → AUC (OvR): {auc:.4f}")
+                print("  → Classification Report:")
+                print(classification_report(true_cpu, pred_cpu, digits=4))
 
-            return acc  # or return a dict if you want more later
+            return {
+                "Accuracy": acc,
+                "Precision": precision,
+                "Recall": recall,
+                "F1": f1,
+                "AUC": auc
+            }
 
     def evaluate_link_prediction(model, data, num_samples=1000):
         model.eval()
@@ -94,30 +117,46 @@ def run_gnn_pipeline(data, labels, pretrain_epochs=100, finetune_epochs=100):
         neg_dst = torch.randint(0, num_nodes, (num_samples,))
         neg_edges = (neg_src, neg_dst)
 
-        # Get scores
+        # Score function
         def link_score(u, v):
             return (u * v).sum(dim=1)
 
         pos_score = link_score(emb[pos_edges[0]], emb[pos_edges[1]])
         neg_score = link_score(emb[neg_edges[0]], emb[neg_edges[1]])
 
-        # Combine
+        # Combine scores and labels
         scores = torch.cat([pos_score, neg_score])
         labels = torch.cat([
             torch.ones_like(pos_score),
             torch.zeros_like(neg_score)
         ])
 
-        from sklearn.metrics import roc_auc_score, average_precision_score
+        preds = (scores > 0).float()
 
+        # Metrics
+        acc = accuracy_score(labels.cpu(), preds.cpu())
+        precision = precision_score(labels.cpu(), preds.cpu(), zero_division=0)
+        recall = recall_score(labels.cpu(), preds.cpu(), zero_division=0)
+        f1 = f1_score(labels.cpu(), preds.cpu(), zero_division=0)
         auc = roc_auc_score(labels.cpu(), scores.cpu())
         ap = average_precision_score(labels.cpu(), scores.cpu())
 
-        print(f"\n=== Link Prediction Evaluation ===")
-        print(f"  → ROC-AUC:       {auc:.4f}")
-        print(f"  → Avg Precision: {ap:.4f}")
+        print("\n=== Link Prediction Evaluation ===")
+        print(f"  → Accuracy:  {acc:.4f}")
+        print(f"  → Precision: {precision:.4f}")
+        print(f"  → Recall:    {recall:.4f}")
+        print(f"  → F1 Score:  {f1:.4f}")
+        print(f"  → AUC:       {auc:.4f}")
+        print(f"  → AP:        {ap:.4f}")
 
-        return auc, ap
+        return {
+            "LP-Accuracy": acc,
+            "LP-Precision": precision,
+            "LP-Recall": recall,
+            "LP-F1": f1,
+            "LP-AUC": auc,
+            "LP-AP": ap
+        }
 
     print("\n=== Fine-tuning on Node Classification ===")
     for epoch in range(1, finetune_epochs + 1):
@@ -130,10 +169,10 @@ def run_gnn_pipeline(data, labels, pretrain_epochs=100, finetune_epochs=100):
 
         if epoch % 10 == 0:
             val_acc = evaluate(class_model, data, labels, val_mask)
-            print(f"Epoch {epoch:03d} | Fine-tune Loss: {loss.item():.4f} | Val Acc: {val_acc:.4f}")
+            print(f"Epoch {epoch:03d} | Fine-tune Loss: {loss.item():.4f} | Validation Accuracy: {val_acc['Accuracy']:.4f}")
 
-    test_acc = evaluate(class_model, data, labels, test_mask)
-    evaluate_link_prediction(class_model, data)
-    print(f"\nFinal Test Accuracy: {test_acc:.4f}")
+    test_results = evaluate(class_model, data, labels, test_mask)
+    lp_test_results = evaluate_link_prediction(class_model, data)
+    print(f"\nFinal Test Accuracy: {test_results['Accuracy']:.4f}")
 
-    return class_model, test_acc
+    return class_model, test_results, lp_test_results

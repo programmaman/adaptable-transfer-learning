@@ -5,7 +5,7 @@ from models.structural_gcn import (
     GnnClassifierHead,
     train_structural_feature_predictor,
     fine_tune_model,
-    evaluate_model
+    evaluate_model, evaluate_link_prediction
 )
 from utils import get_device
 
@@ -46,7 +46,8 @@ def run_structural_gcn_pipeline(data, labels, hidden_dim=64, mid_dim=32, pretrai
     )
 
     # === Evaluation ===
-    val_loss, val_acc = evaluate_model(classifier_model, data, labels, device=device)
-    print(f"\nFinal Evaluation — Loss: {val_loss:.4f} | Accuracy: {val_acc:.4f}")
+    results = evaluate_model(classifier_model, data, labels, device=device)
+    lp_results = evaluate_link_prediction(classifier_model, data, device=device)
+    print(f"\nFinal Evaluation — Loss: {results['loss']:.4f}, Acc: {results['acc']:.4f}")
 
-    return classifier_model, val_loss, val_acc
+    return classifier_model, results, lp_results
