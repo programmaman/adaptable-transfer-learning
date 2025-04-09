@@ -1,27 +1,28 @@
 import torch
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, average_precision_score, \
-    roc_auc_score
-from torch_geometric.utils import train_test_split_edges
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from models.baselines import SimpleGAT  # Ensure this imports your SimpleGAT model
 
 from models.baselines import SimpleGAT
-from utils import get_device
-
 
 def run_gat_pipeline(data, labels, heads=1, pretrain_epochs=100, finetune_epochs=100):
-    # Setup
-    device = get_device()
+    # Create train, validation, and test masks
+    # Set device and move data and labels to the same device
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = data.to(device)
-    data = train_test_split_edges(data)
     labels = labels.to(device)
-    in_dim = data.x.size(1)
-    num_classes = len(labels.unique())
 
-    # Train/Val/Test Split
+    # Split for downstream classification
     num_nodes = data.num_nodes
+    indices = torch.randperm(num_nodes)
     indices = torch.randperm(num_nodes, device=device)
-    train_cut = int(0.6 * num_nodes)
-    val_cut = int(0.8 * num_nodes)
+    train_ratio, val_ratio = 0.6, 0.2
+    train_cut = int(train_ratio * num_nodes)
+    val_cut = int((train_ratio + val_ratio) * num_nodes)
 
+    train_mask = torch.zeros(num_nodes, dtype=torch.bool)
+    val_mask = torch.zeros(num_nodes, dtype=torch.bool)
+    test_mask = torch.zeros(num_nodes, dtype=torch.bool)
+    # Create masks directly on the target device
     train_mask = torch.zeros(num_nodes, dtype=torch.bool, device=device)
     val_mask = torch.zeros(num_nodes, dtype=torch.bool, device=device)
     test_mask = torch.zeros(num_nodes, dtype=torch.bool, device=device)
@@ -29,40 +30,58 @@ def run_gat_pipeline(data, labels, heads=1, pretrain_epochs=100, finetune_epochs
     val_mask[indices[train_cut:val_cut]] = True
     test_mask[indices[val_cut:]] = True
 
-    # -------------------------
-    # Unified Model for Both Stages
-    # -------------------------
-    model = SimpleGAT(in_channels=in_dim, out_channels=1, heads=heads).to(device)
+    # Define dimensions
+    in_dim = data.x.size(1)
+    out_dim = 1  # For pretraining regression (e.g., predicting clustering coefficient)
+    out_dim = 1  # For pretraining regression (e.g., predicting a structural target)
+    num_classes = len(labels.unique())
 
+    # ---------------------
+    # Pretraining Stage
+    # ---------------------
     # -------------------------
-    # Stage 1: Pretraining (Structural Regression)
+    # Pretraining Stage (Structural Regression)
     # -------------------------
     print("\n=== Pretraining on Structural Regression ===")
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
+    pretrain_model = SimpleGAT(in_channels=in_dim, out_channels=out_dim, heads=heads)
+    pretrain_model = SimpleGAT(in_channels=in_dim, out_channels=out_dim, heads=heads).to(device)
+    pretrain_optimizer = torch.optim.Adam(pretrain_model.parameters(), lr=0.01, weight_decay=5e-4)
     regression_loss = torch.nn.MSELoss()
 
     for epoch in range(1, pretrain_epochs + 1):
-        model.train()
-        optimizer.zero_grad()
-        output = model(data.x, data.edge_index).squeeze()
+        pretrain_model.train()
+        pretrain_optimizer.zero_grad()
+        # Forward pass and compute regression loss against structural targets
+        output = pretrain_model(data.x, data.edge_index).squeeze()
         loss = regression_loss(output, data.structural_targets)
         loss.backward()
-        optimizer.step()
+        pretrain_optimizer.step()
 
         if epoch % 10 == 0:
             print(f"Epoch {epoch:03d} | Pretrain Loss: {loss.item():.4f}")
 
+    # ---------------------
     # -------------------------
-    # Stage 2: Fine-tuning (Node Classification)
+    # Fine-tuning Stage (Node Classification)
+    # ---------------------
     # -------------------------
     print("\n=== Fine-tuning on Node Classification ===")
+    # Initialize the classification model with output dimension equal to the number of classes
+    class_model = SimpleGAT(in_channels=in_dim, out_channels=num_classes, heads=heads)
+    class_model = SimpleGAT(in_channels=in_dim, out_channels=num_classes, heads=heads).to(device)
 
-    # Replace the output head for classification
-    model.out_proj = torch.nn.Linear(model.out_proj.in_features, num_classes).to(device)
+    # Transfer pretrained weights (except the final layer weights)
+    # Transfer pretrained weights except for the final layer weights (if shapes match)
+    pretrained_dict = pretrain_model.state_dict()
+    model_dict = class_model.state_dict()
+    filtered_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict and v.shape == model_dict[k].shape}
+    model_dict.update(filtered_dict)
+    class_model.load_state_dict(model_dict)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
+    optimizer = torch.optim.Adam(class_model.parameters(), lr=0.01, weight_decay=5e-4)
     criterion = torch.nn.CrossEntropyLoss()
 
+    # Define evaluation function
     def evaluate(model, data, labels, mask, verbose=True):
         model.eval()
         with torch.no_grad():
@@ -71,7 +90,12 @@ def run_gat_pipeline(data, labels, heads=1, pretrain_epochs=100, finetune_epochs
             true = labels[mask]
             pred_masked = pred[mask]
 
-            # Convert to CPU
+            # Compute metrics using sklearn
+            acc = accuracy_score(true.cpu(), pred_masked.cpu())
+            precision = precision_score(true.cpu(), pred_masked.cpu(), average='macro', zero_division=0)
+            recall = recall_score(true.cpu(), pred_masked.cpu(), average='macro', zero_division=0)
+            f1 = f1_score(true.cpu(), pred_masked.cpu(), average='macro', zero_division=0)
+            # Move to CPU for sklearn metrics
             pred_masked_cpu = pred_masked.cpu()
             true_cpu = true.cpu()
 
@@ -88,44 +112,23 @@ def run_gat_pipeline(data, labels, heads=1, pretrain_epochs=100, finetune_epochs
 
             return acc
 
-    def evaluate_link_prediction(model, data):
-        model.eval()
-        with torch.no_grad():
-            # Get node embeddings
-            z = model(data.x, data.edge_index)
-
-            # Positive edge scores
-            pos_edge_index = data.test_pos_edge_index
-            pos_scores = (z[pos_edge_index[0]] * z[pos_edge_index[1]]).sum(dim=1)
-
-            # Negative edge scores
-            neg_edge_index = data.test_neg_edge_index
-            neg_scores = (z[neg_edge_index[0]] * z[neg_edge_index[1]]).sum(dim=1)
-
-            # Combine
-            scores = torch.cat([pos_scores, neg_scores])
-            labels = torch.cat([torch.ones(pos_scores.size(0)), torch.zeros(neg_scores.size(0))])
-
-            auc = roc_auc_score(labels.cpu(), scores.cpu())
-            ap = average_precision_score(labels.cpu(), scores.cpu())
-
-            print(f"\nLink Prediction → AUC: {auc:.4f}, AP: {ap:.4f}")
-            return auc, ap
-
+    # Fine-tuning loop for node classification
     for epoch in range(1, finetune_epochs + 1):
-        model.train()
+        class_model.train()
         optimizer.zero_grad()
-        out = model(data.x, data.edge_index)
+        out = class_model(data.x, data.edge_index)
         loss = criterion(out[train_mask], labels[train_mask])
         loss.backward()
         optimizer.step()
 
         if epoch % 10 == 0:
             print(f"Epoch {epoch:03d} | Fine-tune Loss: {loss.item():.4f}")
-            val_acc = evaluate(model, data, labels, val_mask)
+            val_acc = evaluate(class_model, data, labels, val_mask)
+            print(f"Epoch {epoch:03d} | Fine-tune Loss: {loss.item():.4f} | Val Acc: {val_acc:.4f}")
             print(f"Epoch {epoch:03d} | Val Acc: {val_acc:.4f}")
 
-    test_acc = evaluate(model, data, labels, test_mask)
+    test_acc = evaluate(class_model, data, labels, test_mask)
     print(f"\nFinal Test Accuracy: {test_acc:.4f}")
 
-    return model, test_acc
+    return class_model, test_acc
+
