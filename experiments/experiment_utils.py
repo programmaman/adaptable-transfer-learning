@@ -121,3 +121,53 @@ def load_email_eu_core_dataset(edge_path: str, label_path: str):
     print(f"Label coverage: {(labels >= 0).sum().item()} / {len(labels)} nodes labeled")
 
     return data, labels
+
+
+def sample_negative_edges(pos_edges: torch.Tensor, num_nodes: int, num_samples: int = None, existing_edge_set: set = None) -> torch.Tensor:
+    """
+    Sample negative edges (non-existent links) for link prediction evaluation.
+
+    Args:
+        pos_edges (Tensor): Shape [num_pos_edges, 2] — existing positive edges.
+        num_nodes (int): Number of nodes in the graph.
+        num_samples (int, optional): How many negative edges to sample. Defaults to len(pos_edges).
+        existing_edge_set (set, optional): Optional set of (u, v) edges to avoid. If not provided, uses pos_edges.
+
+    Returns:
+        Tensor: Negative edges of shape [num_samples, 2].
+    """
+    if num_samples is None:
+        num_samples = pos_edges.size(0)
+
+    # Initialize set of positive or existing edges
+    if existing_edge_set is None:
+        existing_edge_set = set((u.item(), v.item()) for u, v in pos_edges)
+
+    neg_edges = set()
+    while len(neg_edges) < num_samples:
+        u = torch.randint(0, num_nodes, (1,)).item()
+        v = torch.randint(0, num_nodes, (1,)).item()
+        if u != v and (u, v) not in existing_edge_set and (v, u) not in existing_edge_set:
+            neg_edges.add((u, v))
+
+    # Convert to tensor
+    neg_edges_tensor = torch.tensor(list(neg_edges), dtype=torch.long)
+    return neg_edges_tensor
+
+def split_edges_for_link_prediction(edge_index: torch.Tensor, removal_ratio: float = 0.1):
+    """
+    Randomly removes a subset of edges for link prediction.
+
+    Returns:
+        remaining_edges: Tensor [2, num_remaining]
+        removed_edges_dict: Dict format matching rem_edge_list
+    """
+    num_edges = edge_index.size(1)
+    perm = torch.randperm(num_edges)
+    split_idx = int((1 - removal_ratio) * num_edges)
+    remaining_edges = edge_index[:, perm[:split_idx]]
+    removed_edges = edge_index[:, perm[split_idx:]]
+
+    # Match expected format: {0: [Tensor of shape [num_removed, 2]]}
+    rem_edge_list = {0: [removed_edges.t()]}  # [num_edges, 2]
+    return remaining_edges, rem_edge_list

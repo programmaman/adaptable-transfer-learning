@@ -6,7 +6,7 @@ from torch_geometric.utils import to_networkx
 
 from experiment_utils import generate_synthetic_graph, generate_task_labels, load_musae_facebook_dataset, load_email_eu_core_dataset
 from experiments.gat_pipeline import run_gat_pipeline
-from experiments.gnn_pipeline import run_gnn_pipeline
+from experiments.gnn_pipeline import run_pipeline
 from experiments.graph_sage_pipeline import run_graphsage_pipeline
 from experiments.struct_gcn_pipeline import run_structural_gcn_pipeline
 from experiments.gpt_gnn_pipeline import run_gpt_gnn_pipeline
@@ -20,31 +20,31 @@ def run_synthetic_experiments():
     data, labels = generate_synthetic_graph()
 
     print("\n========== [Synthetic] SimpleGNN ==========")
-    simplegnn_model, simple_gnn_test_results, simple_gnn_lp_results = run_gnn_pipeline(data, labels)
+    simplegnn_model, simplegnn_cls_results, simplegnn_lp_results = run_pipeline(data, labels)
 
     print("\n========== [Synthetic] StructuralGCN ==========")
-    structural_model, structural_loss, structural_gcn_acc = run_structural_gcn_pipeline(data, labels)
+    sgcn_model, sgcn_cls_results, sgcn_lp_results = run_structural_gcn_pipeline(data, labels)
 
     print("\n========== [Synthetic] GPT-GNN ==========")
-    gpt_model, gpt_test_acc = run_gpt_gnn_pipeline(data, labels)
+    gpt_model, gpt_cls_results, gpt_lp_results = run_gpt_gnn_pipeline(data, labels)
 
     print("\n========== [Synthetic] StructuralGNN (Node2Vec) ==========")
-    structural_model, structural_classifier, structural_acc = run_structural_node2vec_pipeline(data, labels)
+    structgnn_model, structgnn_classifier, structgnn_cls_results, structgnn_lp_results = run_structural_node2vec_pipeline(data, labels)
 
     print("\n========== [Synthetic] SimpleGraphSAGE ==========")
-    graphsage_model, graphsage_test_acc = run_graphsage_pipeline(data, labels)
+    graphsage_model, graphsage_cls_acc = run_graphsage_pipeline(data, labels)
 
     print("\n========== [Synthetic] SimpleGAT ==========")
-    simplegat_model, classification_results, lp_results = run_gat_pipeline(data, labels)
-
+    simplegat_model, simplegat_cls_results = run_gat_pipeline(data, labels)
 
     print("\n========== [Synthetic] Summary ==========")
-    print(f"[Synthetic] SimpleGNN Final Test Accuracy:       {simple_gnn_test_results, simple_gnn_lp_results}")
-    print(f"[Synthetic] StructuralGCN Final Val Accuracy:    {structural_gcn_acc:.4f} | Loss: {structural_loss:.4f}")
-    print(f"[Synthetic] GPT-GNN Final Test Accuracy:         {gpt_test_acc:.4f}")
-    print(f"[Synthetic] StructuralGNN Final Test Accuracy:   {structural_acc:.4f}")
-    print(f"[Synthetic] SimpleGAT Final Test Results:         {classification_results, lp_results}")
-    print(f"[Synthetic] SimpleGraphSAGE Final Test Accuracy:   {graphsage_test_acc:.4f}")
+    print(f"[Synthetic] SimpleGNN Final Test Accuracy:       {simplegnn_cls_results['accuracy']:.4f}")
+    print(f"[Synthetic] StructuralGCN Final Val Accuracy:    {sgcn_cls_results['Accuracy']:.4f}")
+    print(f"[Synthetic] GPT-GNN Final Test Accuracy:         {gpt_cls_results['Accuracy']:.4f}")
+    print(f"[Synthetic] StructuralGNN Final Test Accuracy:   {structgnn_cls_results['Accuracy']:.4f}")
+    print(f"[Synthetic] SimpleGAT Final Test Accuracy:       {simplegat_cls_results['accuracy']:.4f}")
+    print(f"[Synthetic] SimpleGraphSAGE Final Test Accuracy: {graphsage_cls_acc:.4f}")
+
 
 
 
@@ -135,18 +135,18 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # this file's dir
 def run_experiments():
     run_synthetic_experiments()
 
-    fb_dir = os.path.join(BASE_DIR, "../datasets/facebook_large")
-    run_facebook_experiments(
-        edge_path=os.path.join(fb_dir, "musae_facebook_edges.csv"),
-        features_path=os.path.join(fb_dir, "musae_facebook_features.json"),
-        target_path=os.path.join(fb_dir, "musae_facebook_target.csv")
-    )
-
-    email_dir = os.path.join(BASE_DIR, "../datasets/email-eu-core")
-    run_email_eu_core_experiments(
-        edge_path=os.path.join(email_dir, "email-Eu-core.txt"),
-        label_path=os.path.join(email_dir, "email-Eu-core-department-labels.txt")
-    )
+    # fb_dir = os.path.join(BASE_DIR, "../datasets/facebook_large")
+    # run_facebook_experiments(
+    #     edge_path=os.path.join(fb_dir, "musae_facebook_edges.csv"),
+    #     features_path=os.path.join(fb_dir, "musae_facebook_features.json"),
+    #     target_path=os.path.join(fb_dir, "musae_facebook_target.csv")
+    # )
+    #
+    # email_dir = os.path.join(BASE_DIR, "../datasets/email-eu-core")
+    # run_email_eu_core_experiments(
+    #     edge_path=os.path.join(email_dir, "email-Eu-core.txt"),
+    #     label_path=os.path.join(email_dir, "email-Eu-core-department-labels.txt")
+    # )
 
 
 

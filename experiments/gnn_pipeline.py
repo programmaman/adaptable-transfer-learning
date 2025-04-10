@@ -184,7 +184,4 @@ def run_pipeline(data, labels,
     # 6) Evaluate link prediction
     lp_metrics = evaluate_link_prediction(class_model, data)
 
-    return {
-        'classification': test_metrics,
-        'link_prediction': lp_metrics,
-    }
+    return class_model, test_metrics, lp_metrics

@@ -145,7 +145,7 @@ def evaluate_model(model, data, labels, device, verbose=True):
     model.eval()
     with torch.no_grad():
         logits = model(data.x.to(device), data.edge_index.to(device))
-        probs = F.softmax(logits, dim=1)
+        probs = f.softmax(logits, dim=1)
         preds = probs.argmax(dim=1)
 
         true = labels.cpu()

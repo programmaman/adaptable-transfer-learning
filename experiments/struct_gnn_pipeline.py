@@ -1,106 +1,149 @@
-import torch
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import time
+import random
+import numpy as np
+import torch
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score, f1_score,
+    roc_auc_score, average_precision_score
+)
 
+from experiments.experiment_utils import sample_negative_edges, split_edges_for_link_prediction
 from utils import get_device
 
 
-def run_structural_node2vec_pipeline(
-        data,
-        labels,
-        hidden_dim=64,
-        output_dim=32,
-        embedding_dim=128,
-        num_layers=2,
-        node2vec_pretrain_epochs=100,
-        full_pretrain_epochs=100,
-        finetune_epochs=100,
-        do_linkpred=True,
-        do_n2v_align=True,
-        do_featrec=False,
-):
+# ------------------------
+# Helper Functions
+# ------------------------
+def set_seeds(seed: int = 42):
+    """Sets seeds for reproducibility across torch, numpy, and python's random."""
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+
+
+def create_masks(num_nodes: int, train_ratio: float = 0.6, val_ratio: float = 0.8, device=None):
     """
-    data:       A PyG data object with
-                  - data.x            [num_nodes, input_dim]
-                  - data.edge_index   [2, num_edges]
-    labels:     A 1D LongTensor [num_nodes] of class labels.
-    hidden_dim, output_dim, embedding_dim, num_layers: GNN architecture params
-    node2vec_pretrain_epochs:   epochs for Node2Vec only
-    full_pretrain_epochs:       epochs for structural GNN pretraining
-    finetune_epochs:            epochs for final node classification
-    do_linkpred, do_n2v_align,
-    do_featrec:  booleans indicating which self-supervised tasks to include
-                 in Phase 2. You can add or remove tasks easily.
+    Creates boolean masks for train, validation, and test splits.
+
+    Args:
+        num_nodes: Total number of nodes.
+        train_ratio: Fraction for training.
+        val_ratio: Fraction (cumulative) for training + validation.
+        device: Device on which to create the masks.
 
     Returns:
-        model, classifier, test_acc
+        Tuple of (train_mask, val_mask, test_mask).
     """
-    device = get_device()
-    # Print Device
-    print(f"Using device: {device}")
+    if device is None:
+        device = get_device()
+    indices = torch.randperm(num_nodes, device=device)
+    train_cut = int(train_ratio * num_nodes)
+    val_cut = int(val_ratio * num_nodes)
 
-    # --------------------------------------------------------------------------
-    # (A) Train/val/test split
-    # --------------------------------------------------------------------------
-    num_nodes = data.num_nodes
-    indices = torch.randperm(num_nodes)
-    train_cut = int(0.6 * num_nodes)
-    val_cut = int(0.8 * num_nodes)
-
-    train_mask = torch.zeros(num_nodes, dtype=torch.bool)
-    val_mask = torch.zeros(num_nodes, dtype=torch.bool)
-    test_mask = torch.zeros(num_nodes, dtype=torch.bool)
+    train_mask = torch.zeros(num_nodes, dtype=torch.bool, device=device)
+    val_mask = torch.zeros(num_nodes, dtype=torch.bool, device=device)
+    test_mask = torch.zeros(num_nodes, dtype=torch.bool, device=device)
 
     train_mask[indices[:train_cut]] = True
     val_mask[indices[train_cut:val_cut]] = True
     test_mask[indices[val_cut:]] = True
 
-    # --------------------------------------------------------------------------
-    # (B) Initialize Model
-    # --------------------------------------------------------------------------
-    # If you'd like to unify classification in the same model,
-    # you can pass num_classes=labels.unique().numel() to your ImprovedStructuralGNN.
-    # Below, we show the approach with a separate classifier:
-    from models.structural_gnn import StructuralGNN
+    return train_mask, val_mask, test_mask
 
+
+# ------------------------
+# Model Initialization
+# ------------------------
+def init_structural_gnn(data, hidden_dim: int, output_dim: int,
+                        embedding_dim: int, num_layers: int, do_featrec: bool, device):
+    """
+    Initializes the StructuralGNN model.
+
+    Args:
+        data: A PyG data object.
+        hidden_dim: Hidden dimension parameter.
+        output_dim: Output dimension (for intermediate embeddings).
+        embedding_dim: Final embedding dimension.
+        num_layers: Number of layers.
+        do_featrec: Whether to include feature reconstruction.
+        device: Computation device.
+
+    Returns:
+        model: An instance of StructuralGNN moved to device.
+    """
+    from models.structural_gnn import StructuralGNN
     model = StructuralGNN(
-        num_nodes=num_nodes,
+        num_nodes=data.num_nodes,
         edge_index=data.edge_index,
         input_dim=data.x.size(1),
         hidden_dim=hidden_dim,
         output_dim=output_dim,
         embedding_dim=embedding_dim,
         num_layers=num_layers,
-        use_gat=True,  # or False
-        num_classes=None,  # We do classification externally
+        use_gat=True,  # Modify if you want to use or not use GAT
+        num_classes=None,  # Classification is done with an external head
         feat_reconstruction=do_featrec
     ).to(device)
+    return model
 
-    node_indices = torch.arange(num_nodes, device=device)
-    start_time = time.time()
 
-    # --------------------------------------------------------------------------
-    # Phase 1: Pre-train Node2Vec Embeddings
-    # --------------------------------------------------------------------------
-    print("\n=== Phase 1: Pre-training Node2Vec embeddings ===")
+# ------------------------
+# Phase 1: Pre-training Node2Vec Embeddings
+# ------------------------
+def pretrain_node2vec(model, node2vec_pretrain_epochs: int, batch_size: int = 128, lr: float = 0.01,
+                      verbose: bool = True):
+    """
+    Pretrains Node2Vec embeddings.
+
+    Args:
+        model: The StructuralGNN model.
+        node2vec_pretrain_epochs: Number of epochs to run Node2Vec pre-training.
+        batch_size: Batch size.
+        lr: Learning rate.
+        verbose: Whether to print progress.
+
+    Returns:
+        model: The model after Node2Vec pre-training.
+    """
+    if verbose:
+        print("\n=== Phase 1: Pre-training Node2Vec embeddings ===")
     model.train_node2vec(
         num_epochs=node2vec_pretrain_epochs,
-        batch_size=128,
-        lr=0.01,
-        verbose=True
+        batch_size=batch_size,
+        lr=lr,
+        verbose=verbose
     )
+    return model
 
-    # --------------------------------------------------------------------------
-    # Phase 2: Pre-train Full Model (Self-Supervised)
-    # Using link prediction, optional feature reconstruction, alignment, etc.
-    # --------------------------------------------------------------------------
-    print("\n=== Phase 2: Pre-training the Structural GNN (with supervision) ===")
 
-    # Initialize classifier earlier (so it learns during pretraining)
-    classifier = torch.nn.Linear(output_dim, labels.unique().numel()).to(device)
+# ------------------------
+# Phase 2: Full Pre-training with Self-Supervision
+# ------------------------
+def pretrain_full_model(
+        model, classifier, data, labels, train_mask, full_pretrain_epochs: int,
+        do_linkpred: bool, do_n2v_align: bool, do_featrec: bool, device, log_every: int = 10):
+    """
+    Pretrains the full Structural GNN using self-supervised tasks along with node classification.
+
+    Args:
+        model: The StructuralGNN model.
+        classifier: The classification head (e.g., a Linear layer).
+        data: The graph data object.
+        labels: Node labels tensor.
+        train_mask: Training mask.
+        full_pretrain_epochs: Number of epochs.
+        do_linkpred: Whether to include link prediction loss.
+        do_n2v_align: Whether to include Node2Vec alignment loss.
+        do_featrec: Whether to include feature reconstruction loss.
+        device: Computation device.
+        log_every: Logging frequency.
+
+    Returns:
+        Tuple (model, classifier) after pre-training.
+    """
+    print("\n=== Phase 2: Pre-training the Structural GNN (with self-supervision) ===")
     criterion = torch.nn.CrossEntropyLoss()
-
-    pretrain_optimizer = torch.optim.Adam(
+    optimizer = torch.optim.Adam(
         list(model.parameters()) + list(classifier.parameters()),
         lr=0.01, weight_decay=5e-4
     )
@@ -108,9 +151,8 @@ def run_structural_node2vec_pipeline(
     for epoch in range(full_pretrain_epochs):
         model.train()
         classifier.train()
-        pretrain_optimizer.zero_grad()
+        optimizer.zero_grad()
 
-        # Forward with classification + optional tasks
         embeddings, pretrain_loss = model.forward_and_loss(
             data,
             neg_sample_size=5,
@@ -119,197 +161,257 @@ def run_structural_node2vec_pipeline(
             do_featrec=do_featrec,
             do_n2v_align=do_n2v_align
         )
-
-        # Supervised classification loss
         logits = classifier(embeddings)
         cls_loss = criterion(logits[train_mask], labels[train_mask].to(logits.device))
-        total_loss = pretrain_loss + cls_loss  # Combine supervised + SSL
+        total_loss = pretrain_loss + cls_loss
 
         total_loss.backward()
-        pretrain_optimizer.step()
+        optimizer.step()
 
-        if epoch % 10 == 0:
+        if epoch % log_every == 0 or epoch == full_pretrain_epochs - 1:
             print(
                 f"[Pretrain Epoch {epoch:03d}] Total Loss: {total_loss.item():.4f} | Cls: {cls_loss.item():.4f} | SSL: {pretrain_loss.item():.4f}")
 
-    from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, \
-        average_precision_score
+    return model, classifier
 
-    def evaluate(model, classifier, data_x, edge_index, node_indices, labels, mask, verbose=True):
-        """
-        Evaluates both node classification and link prediction performance for the model.
 
-        Args:
-            model: The GNN model (StructuralGNN).
-            classifier: The classifier head.
-            data_x: The node features.
-            edge_index: The graph structure (edge indices).
-            node_indices: Indices of nodes to evaluate.
-            labels: The node labels.
-            mask: The mask for train/validation/test split.
-            verbose: Whether to print the evaluation metrics.
+# ------------------------
+# Evaluation Functions
+# ------------------------
+def evaluate_classification(model, classifier, data, labels, mask, device, verbose: bool = True):
+    """
+    Evaluates node classification performance.
 
-        Returns:
-            metrics_dict: A dictionary containing classification metrics (Accuracy, Precision, Recall, F1, AUC).
-        """
-        # Node Classification Evaluation
-        model.eval()
-        classifier.eval()
-        with torch.no_grad():
-            # Forward pass through the GNN and classifier
-            logits = classifier(model(data_x, edge_index, node_indices))
-            preds = logits[mask].argmax(dim=1)
-            true = labels[mask]
+    Args:
+        model: The StructuralGNN model.
+        classifier: The classification head.
+        data: Graph data object.
+        labels: Node labels tensor.
+        mask: Boolean mask for evaluation split.
+        device: Computation device.
+        verbose: Whether to print detailed metrics.
 
-            preds = preds.cpu()
-            true = true.cpu()
+    Returns:
+        A dictionary of classification metrics.
+    """
+    from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+    model.eval()
+    classifier.eval()
+    # Define node indices as all nodes
+    node_indices = torch.arange(data.num_nodes, device=device)
+    with torch.no_grad():
+        embeddings = model(data.x.to(device), data.edge_index.to(device), node_indices)
+        logits = classifier(embeddings)
+        preds = logits[mask].argmax(dim=1)
+        true = labels[mask]
 
-            # Metrics calculation
-            acc = accuracy_score(true, preds)
-            precision = precision_score(true, preds, average='macro', zero_division=0)
-            recall = recall_score(true, preds, average='macro', zero_division=0)
-            f1 = f1_score(true, preds, average='macro', zero_division=0)
+    preds, true = preds.cpu(), true.cpu()
+    acc = accuracy_score(true, preds)
+    precision = precision_score(true, preds, average='macro', zero_division=0)
+    recall = recall_score(true, preds, average='macro', zero_division=0)
+    f1 = f1_score(true, preds, average='macro', zero_division=0)
 
-            # Optionally compute AUC if it's a multi-class classification problem
-            auc = None
-            try:
-                auc = roc_auc_score(true, preds, multi_class='ovr', average='macro')
-            except ValueError:
-                auc = None
+    try:
+        auc = roc_auc_score(true, preds, multi_class='ovr', average='macro')
+    except ValueError:
+        auc = None
 
-            # Print results if verbose
-            if verbose:
-                print(f"  → Accuracy:  {acc:.4f}")
-                print(f"  → Precision: {precision:.4f}")
-                print(f"  → Recall:    {recall:.4f}")
-                print(f"  → F1 Score:  {f1:.4f}")
-                if auc is not None:
-                    print(f"  → AUC (OvR): {auc:.4f}")
-
-            metrics_dict = {
-                "Accuracy": acc,
-                "Precision": precision,
-                "Recall": recall,
-                "F1": f1,
-                "AUC": auc
-            }
-
-        return metrics_dict
-
-    def evaluate_link_prediction(model, data, rem_edge_list, ori_edge_list, device):
-        """
-        Evaluates link prediction performance.
-
-        Args:
-            model: The trained model.
-            data: The input graph data.
-            rem_edge_list: Removed edges used for link prediction.
-            ori_edge_list: Original edges for context.
-            device: The device to run on (CPU or GPU).
-
-        Returns:
-            lp_results: A dictionary containing link prediction metrics (AUC, AP, etc.).
-        """
-        model.eval()
-        with torch.no_grad():
-            emb = model(
-                data.x.to(device),
-                data.node_type.to(device),
-                data.edge_time.to(device),
-                data.edge_index.to(device),
-                data.edge_type.to(device)
-            )
-
-        # Retrieve positive and negative test edges (binary classification)
-        pos_edges = rem_edge_list[0][0].to(device)
-        neg_edges = model.sample_negative_edges(pos_edges, data.x.size(0)).to(device)
-
-        def score(u, v): return (emb[u] * emb[v]).sum(dim=-1)
-
-        pos_scores = score(pos_edges[:, 0], pos_edges[:, 1])
-        neg_scores = score(neg_edges[:, 0], neg_edges[:, 1])
-
-        scores = torch.cat([pos_scores, neg_scores])
-        labels = torch.cat([torch.ones_like(pos_scores), torch.zeros_like(neg_scores)])
-        preds = (scores > 0).float()
-
-        acc = accuracy_score(labels.cpu(), preds.cpu())
-        precision = precision_score(labels.cpu(), preds.cpu(), zero_division=0)
-        recall = recall_score(labels.cpu(), preds.cpu(), zero_division=0)
-        f1 = f1_score(labels.cpu(), preds.cpu(), zero_division=0)
-        auc = roc_auc_score(labels.cpu(), scores.cpu())
-        ap = average_precision_score(labels.cpu(), scores.cpu())
-
-        print(f"\n=== Link Prediction Evaluation ===")
+    if verbose:
         print(f"  → Accuracy:  {acc:.4f}")
         print(f"  → Precision: {precision:.4f}")
         print(f"  → Recall:    {recall:.4f}")
         print(f"  → F1 Score:  {f1:.4f}")
-        print(f"  → AUC:       {auc:.4f}")
-        print(f"  → AP:        {ap:.4f}")
+        if auc is not None:
+            print(f"  → AUC (OvR): {auc:.4f}")
 
-        lp_results = {
-            "LP-Accuracy": acc,
-            "LP-Precision": precision,
-            "LP-Recall": recall,
-            "LP-F1": f1,
-            "LP-AUC": auc,
-            "LP-AP": ap
-        }
+    return {"Accuracy": acc, "Precision": precision, "Recall": recall, "F1": f1, "AUC": auc, "preds": preds}
 
-        return lp_results
-    # --------------------------------------------------------------------------
-    # Phase 3: Fine-tune for Node Classification
-    # --------------------------------------------------------------------------
-    print("\n=== Phase 3: Fine-tuning for Node Classification ===")
-    classifier = torch.nn.Linear(output_dim, labels.unique().numel()).to(device)
 
-    finetune_optimizer = torch.optim.Adam(
-        list(model.parameters()) + list(classifier.parameters()),
-        lr=0.01, weight_decay=5e-4
-    )
+def evaluate_link_prediction(model, data, rem_edge_list, device):
+    """
+    Evaluates link prediction performance.
+
+    Args:
+        model: The trained StructuralGNN model.
+        data: The graph data object.
+        rem_edge_list: Dictionary of removed edges.
+        device: Computation device.
+
+    Returns:
+        A dictionary with link prediction metrics.
+    """
+    model.eval()
+    with torch.no_grad():
+        node_indices = torch.arange(data.num_nodes, device=device)
+        emb = model(data.x.to(device), data.edge_index.to(device), node_indices)
+
+    # Positive edges from removed list; negative edges are sampled
+    pos_edges = rem_edge_list[0][0].to(device)
+    neg_edges = sample_negative_edges(pos_edges, data.num_nodes).to(device)
+
+    def score(u, v):
+        return (emb[u] * emb[v]).sum(dim=-1)
+
+    pos_scores = score(pos_edges[:, 0], pos_edges[:, 1])
+    neg_scores = score(neg_edges[:, 0], neg_edges[:, 1])
+    scores = torch.cat([pos_scores, neg_scores])
+    lp_labels = torch.cat([torch.ones_like(pos_scores), torch.zeros_like(neg_scores)])
+    preds = (scores > 0).float()
+
+    acc = accuracy_score(lp_labels.cpu(), preds.cpu())
+    precision = precision_score(lp_labels.cpu(), preds.cpu(), zero_division=0)
+    recall = recall_score(lp_labels.cpu(), preds.cpu(), zero_division=0)
+    f1 = f1_score(lp_labels.cpu(), preds.cpu(), zero_division=0)
+    auc = roc_auc_score(lp_labels.cpu(), scores.cpu())
+    ap = average_precision_score(lp_labels.cpu(), scores.cpu())
+
+    print("\n=== Link Prediction Evaluation ===")
+    print(f"  → Accuracy:  {acc:.4f}")
+    print(f"  → Precision: {precision:.4f}")
+    print(f"  → Recall:    {recall:.4f}")
+    print(f"  → F1 Score:  {f1:.4f}")
+    print(f"  → AUC:       {auc:.4f}")
+    print(f"  → AP:        {ap:.4f}")
+
+    return {
+        "LP-Accuracy": acc,
+        "LP-Precision": precision,
+        "LP-Recall": recall,
+        "LP-F1": f1,
+        "LP-AUC": auc,
+        "LP-AP": ap
+    }
+
+
+# ------------------------
+# Phase 3: Fine-tuning for Node Classification
+# ------------------------
+def finetune_classification(model, classifier, data, labels, train_mask, finetune_epochs: int, device,
+                            log_every: int = 10):
+    """
+    Fine-tunes the model for node classification.
+
+    Args:
+        model: The StructuralGNN model.
+        classifier: The classification head.
+        data: Graph data object.
+        labels: Node labels tensor.
+        train_mask: Training mask.
+        finetune_epochs: Number of fine-tuning epochs.
+        device: Computation device.
+        log_every: Logging frequency.
+
+    Returns:
+        Tuple (model, classifier) after fine-tuning.
+    """
+    optimizer = torch.optim.Adam(list(model.parameters()) + list(classifier.parameters()), lr=0.01, weight_decay=5e-4)
     criterion = torch.nn.CrossEntropyLoss()
-
     data_x = data.x.to(device)
     edge_index = data.edge_index.to(device)
-    labels = labels.to(device)
+    node_indices = torch.arange(data.num_nodes, device=device)
 
+    print("\n=== Phase 3: Fine-tuning for Node Classification ===")
     for epoch in range(finetune_epochs):
         model.train()
         classifier.train()
-        finetune_optimizer.zero_grad()
-
-        # Generate embeddings
+        optimizer.zero_grad()
         embeddings = model(data_x, edge_index, node_indices)
-        # Classify
         logits = classifier(embeddings)
-
-        loss = criterion(logits[train_mask], labels[train_mask])
+        loss = criterion(logits[train_mask], labels[train_mask].to(device))
         loss.backward()
-        finetune_optimizer.step()
+        optimizer.step()
 
-        if epoch % 10 == 0:
-            # Validation
-            model.eval()
-            classifier.eval()
-            with torch.no_grad():
-                print(f"[Fine-tune Epoch {epoch:03d}] Loss: {loss.item():.4f}")
-                evaluate(model, classifier, data_x, edge_index, node_indices, labels, val_mask)
+        if epoch % log_every == 0 or epoch == finetune_epochs - 1:
+            print(f"[Fine-tune Epoch {epoch:03d}] Loss: {loss.item():.4f}")
+            _ = evaluate_classification(model, classifier, data, labels, data.val_mask, device, verbose=True)
 
-    # --------------------------------------------------------------------------
-    # Final Test Evaluation
-    # --------------------------------------------------------------------------
+    return model, classifier
 
-    n2v_time = time.time() - start_time
-    print(f"→ Training Time: {n2v_time:.2f} seconds")
 
-    model.eval()
-    classifier.eval()
-    with torch.no_grad():
-        test_embeddings = model(data_x, edge_index, node_indices)
-        test_logits = classifier(test_embeddings)
-        test_preds = test_logits[test_mask].argmax(dim=1)
-        test_acc = evaluate(model, classifier, data_x, edge_index, node_indices, labels, test_mask)
+# ------------------------
+# Main Pipeline Function
+# ------------------------
+def run_structural_node2vec_pipeline(
+        data,
+        labels,
+        hidden_dim: int = 64,
+        output_dim: int = 32,
+        embedding_dim: int = 128,
+        num_layers: int = 2,
+        node2vec_pretrain_epochs: int = 100,
+        full_pretrain_epochs: int = 100,
+        finetune_epochs: int = 100,
+        do_linkpred: bool = True,
+        do_n2v_align: bool = True,
+        do_featrec: bool = False,
+        seed: int = 42
+):
+    """
+    Runs the full Structural Node2Vec pipeline.
+
+    Args:
+        data: A PyG data object containing:
+              - data.x          [num_nodes, input_dim]
+              - data.edge_index [2, num_edges]
+        labels: A 1D LongTensor [num_nodes] of class labels.
+        hidden_dim, output_dim, embedding_dim, num_layers: GNN architecture parameters.
+        node2vec_pretrain_epochs: Epochs for pre-training Node2Vec embeddings.
+        full_pretrain_epochs: Epochs for full structural pre-training (self-supervised tasks and classification).
+        finetune_epochs: Epochs for final node classification fine-tuning.
+        do_linkpred, do_n2v_align, do_featrec: Flags for including additional self-supervised tasks.
+        seed: Random seed for reproducibility.
+
+    Returns:
+        Tuple (model, classifier, final_classification_metrics, link_prediction_metrics).
+    """
+    # Set seeds for reproducibility.
+    set_seeds(seed)
+
+    device = get_device()
+    print(f"Using device: {device}")
+
+    # Create train/val/test masks.
+    num_nodes = data.num_nodes
+    train_mask, val_mask, test_mask = create_masks(num_nodes, device=device)
+    data.train_mask = train_mask
+    data.val_mask = val_mask
+    data.test_mask = test_mask
+
+    # Generate node indices for forward passes.
+    data.edge_index, rem_edge_list = split_edges_for_link_prediction(data.edge_index, removal_ratio=0.1)
+    node_indices = torch.arange(num_nodes, device=device)
+
+    # Initialize model.
+    model = init_structural_gnn(data, hidden_dim, output_dim, embedding_dim, num_layers, do_featrec, device)
+
+    start_time = time.time()
+
+    # Phase 1: Pre-train Node2Vec embeddings.
+    model = pretrain_node2vec(model, node2vec_pretrain_epochs, batch_size=128, lr=0.01, verbose=True)
+
+    # Phase 2: Full pre-training with self-supervision.
+    # Initialize classifier head (for node classification) externally.
+    num_classes = labels.unique().numel()
+    classifier = torch.nn.Linear(output_dim, num_classes).to(device)
+    model, classifier = pretrain_full_model(model, classifier, data, labels, train_mask,
+                                            full_pretrain_epochs, do_linkpred, do_n2v_align, do_featrec, device,
+                                            log_every=10)
+
+    # (Optionally) Evaluate link prediction performance.
+    lp_results = None
+    if do_linkpred:
+        # Here we assume the model stores a removed edge list (model.rem_edge_list) for evaluation.
+        lp_results = evaluate_link_prediction(model, data, rem_edge_list, device)
+
+    # Phase 3: Fine-tune for node classification.
+    model, classifier = finetune_classification(model, classifier, data, labels, train_mask, finetune_epochs, device,
+                                                log_every=10)
+
+    total_time = time.time() - start_time
+    print(f"→ Total Training Time: {total_time:.2f} seconds")
+
+    # Final evaluation on test set.
+    classifier_results = evaluate_classification(model, classifier, data, labels, test_mask, device, verbose=True)
     print("\nFinal Test Evaluation:")
 
-    return model, classifier, test_acc
+    return model, classifier, classifier_results, lp_results

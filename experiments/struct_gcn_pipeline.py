@@ -48,6 +48,6 @@ def run_structural_gcn_pipeline(data, labels, hidden_dim=64, mid_dim=32, pretrai
     # === Evaluation ===
     results = evaluate_model(classifier_model, data, labels, device=device)
     lp_results = evaluate_link_prediction(classifier_model, data, device=device)
-    print(f"\nFinal Evaluation — Loss: {results['loss']:.4f}, Acc: {results['acc']:.4f}")
+    print(f"\nFinal Evaluation — Acc: {results['Accuracy']:.4f})")
 
     return classifier_model, results, lp_results
