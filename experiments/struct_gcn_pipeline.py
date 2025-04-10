@@ -1,16 +1,129 @@
 import torch
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, \
+    average_precision_score, classification_report
 
+from experiments.experiment_utils import EvaluationResult
 from models.structural_gcn import (
     StructuralGcn,
     GnnClassifierHead,
     train_structural_feature_predictor,
-    fine_tune_model,
-    evaluate_model, evaluate_link_prediction
+    fine_tune_model
 )
 from utils import get_device
+import torch.nn.functional as f
+
+def evaluate_model(model, data, labels, device, verbose=True) -> EvaluationResult:
+    """
+    General-purpose model evaluation for node classification.
+    Returns an EvaluationResult object.
+    """
+    model.eval()
+    with torch.no_grad():
+        logits = model(data.x.to(device), data.edge_index.to(device))
+        probs = f.softmax(logits, dim=1)
+        preds = probs.argmax(dim=1)
+
+        true = labels.cpu()
+        pred = preds.cpu()
+        prob = probs.cpu()
+
+        acc = accuracy_score(true, pred)
+        precision = precision_score(true, pred, average='macro', zero_division=0)
+        recall = recall_score(true, pred, average='macro', zero_division=0)
+        f1 = f1_score(true, pred, average='macro', zero_division=0)
+
+        try:
+            auc = roc_auc_score(true, prob, multi_class='ovr', average='macro')
+        except ValueError:
+            auc = None
+
+        if verbose:
+            print(f"\n=== Node Classification ===")
+            print(f"  → Accuracy:  {acc:.4f}")
+            print(f"  → Precision: {precision:.4f}")
+            print(f"  → Recall:    {recall:.4f}")
+            print(f"  → F1 Score:  {f1:.4f}")
+            if auc is not None:
+                print(f"  → AUC (OvR): {auc:.4f}")
+            print("  → Classification Report:")
+            print(classification_report(true, pred, digits=4))
+
+        return EvaluationResult(
+            accuracy=acc,
+            precision=precision,
+            recall=recall,
+            f1=f1,
+            auc=auc,
+            preds=pred
+        )
 
 
-def run_structural_gcn_pipeline(data, labels, hidden_dim=64, mid_dim=32, pretrain_epochs=100, finetune_epochs=100):
+def evaluate_link_prediction(model, data, num_samples=1000, device='cpu') -> EvaluationResult:
+    """
+    Evaluates link prediction performance using dot product scores between positive and negative edges.
+    Returns an EvaluationResult object.
+    """
+    model.eval()
+    data = data.to(device)
+
+    with torch.no_grad():
+        emb = model(data.x, data.edge_index)
+
+    if emb.dim() == 1:
+        emb = emb.unsqueeze(-1)
+
+    num_nodes = data.num_nodes
+    edge_index = data.edge_index
+
+    # Sample positive edges
+    pos_idx = torch.randperm(edge_index.size(1))[:num_samples]
+    pos_src, pos_dst = edge_index[0, pos_idx], edge_index[1, pos_idx]
+
+    # Sample negative edges
+    neg_src = torch.randint(0, num_nodes, (num_samples,), device=device)
+    neg_dst = torch.randint(0, num_nodes, (num_samples,), device=device)
+
+    def dot_score(u, v): return (u * v).sum(dim=1)
+
+    pos_score = dot_score(emb[pos_src], emb[pos_dst])
+    neg_score = dot_score(emb[neg_src], emb[neg_dst])
+
+    scores = torch.cat([pos_score, neg_score])
+    labels = torch.cat([
+        torch.ones_like(pos_score),
+        torch.zeros_like(neg_score)
+    ])
+
+    preds = (scores > 0).float()
+
+    # Compute metrics
+    acc = accuracy_score(labels.cpu(), preds.cpu())
+    precision = precision_score(labels.cpu(), preds.cpu(), zero_division=0)
+    recall = recall_score(labels.cpu(), preds.cpu(), zero_division=0)
+    f1 = f1_score(labels.cpu(), preds.cpu(), zero_division=0)
+    auc = roc_auc_score(labels.cpu(), scores.cpu())
+    ap = average_precision_score(labels.cpu(), scores.cpu())
+
+    print(f"\n=== Link Prediction ===")
+    print(f"  → Accuracy:  {acc:.4f}")
+    print(f"  → Precision: {precision:.4f}")
+    print(f"  → Recall:    {recall:.4f}")
+    print(f"  → F1 Score:  {f1:.4f}")
+    print(f"  → AUC:       {auc:.4f}")
+    print(f"  → AP:        {ap:.4f}")
+
+    return EvaluationResult(
+        accuracy=acc,
+        precision=precision,
+        recall=recall,
+        f1=f1,
+        auc=auc,
+        ap=ap,
+        preds=preds
+    )
+
+
+def run_structural_gcn_pipeline(data, labels, hidden_dim=64, mid_dim=32, pretrain_epochs=100, finetune_epochs=1):
     device = get_device()
 
     #Print Device
@@ -48,6 +161,6 @@ def run_structural_gcn_pipeline(data, labels, hidden_dim=64, mid_dim=32, pretrai
     # === Evaluation ===
     results = evaluate_model(classifier_model, data, labels, device=device)
     lp_results = evaluate_link_prediction(classifier_model, data, device=device)
-    print(f"\nFinal Evaluation — Acc: {results['Accuracy']:.4f})")
+    print(f"\nFinal Evaluation — Acc: {results.accuracy:.4f}")
 
     return classifier_model, results, lp_results

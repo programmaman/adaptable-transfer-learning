@@ -1,5 +1,7 @@
 import torch
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, average_precision_score
+
+from experiments.experiment_utils import EvaluationResult
 from models.baselines import SimpleGNN
 
 def prepare_data(data, train_ratio=0.6, val_ratio=0.2, seed=None):
@@ -64,7 +66,7 @@ def evaluate_pretrain(model, data):
     print(f"Final Pretrain MSE Loss: {loss.item():.4f}")
     return loss.item()
 
-def fine_tune(class_model, pretrain_model, data, labels, epochs=100, lr=0.01, weight_decay=5e-4, log_every=10):
+def fine_tune(class_model, pretrain_model, data, labels, epochs=1, lr=0.01, weight_decay=5e-4, log_every=10):
     """
     Fine-tunes the classification model, loading pretrained weights (except final layer).
     """
@@ -89,13 +91,13 @@ def fine_tune(class_model, pretrain_model, data, labels, epochs=100, lr=0.01, we
 
         if epoch % log_every == 0 or epoch == epochs:
             metrics = evaluate_classification(class_model, data, labels, data.val_mask, verbose=False)
-            print(f"Epoch {epoch:03d} | Fine-tune Loss: {loss.item():.4f} | Val Acc: {metrics['accuracy']:.4f}")
+            print(f"Epoch {epoch:03d} | Fine-tune Loss: {loss.item():.4f} | Val Acc: {metrics.accuracy:.4f}")
     return class_model
 
-def evaluate_classification(model, data, labels, mask, verbose=True):
+def evaluate_classification(model, data, labels, mask, verbose=False) -> EvaluationResult:
     """
     Evaluates classification performance on the given mask.
-    Returns a dict of metrics.
+    Returns an EvaluationResult object.
     """
     model.eval()
     with torch.no_grad():
@@ -108,33 +110,44 @@ def evaluate_classification(model, data, labels, mask, verbose=True):
     recall    = recall_score(trues, preds, average='macro', zero_division=0)
     f1        = f1_score(trues, preds, average='macro', zero_division=0)
 
+    try:
+        auc = roc_auc_score(trues, preds, multi_class='ovr', average='macro')
+    except ValueError:
+        auc = None
+
     if verbose:
         print(f"  → Accuracy:  {accuracy:.4f}")
         print(f"  → Precision: {precision:.4f}")
         print(f"  → Recall:    {recall:.4f}")
         print(f"  → F1 Score:  {f1:.4f}")
+        if auc is not None:
+            print(f"  → AUC (OvR): {auc:.4f}")
 
-    return {
-        'accuracy': accuracy,
-        'precision': precision,
-        'recall': recall,
-        'f1': f1,
-    }
+    return EvaluationResult(
+        accuracy=accuracy,
+        precision=precision,
+        recall=recall,
+        f1=f1,
+        auc=auc,
+        preds=preds
+    )
 
-def evaluate_link_prediction(model, data, num_samples=1000):
+
+def evaluate_link_prediction(model, data, num_samples=1000) -> EvaluationResult:
     """
     Evaluates link prediction by sampling positive and negative edges.
-    Returns ROC-AUC and Average Precision.
+    Returns an EvaluationResult with binary classification metrics.
     """
     model.eval()
     with torch.no_grad():
         emb = model(data.x, data.edge_index)
 
     src, dst = data.edge_index
-    # positive samples
+    # Positive samples
     idx = torch.randperm(src.size(0))[:num_samples]
     pos_u, pos_v = src[idx], dst[idx]
-    # negative samples
+
+    # Negative samples
     n = data.num_nodes
     neg_u = torch.randint(0, n, (num_samples,))
     neg_v = torch.randint(0, n, (num_samples,))
@@ -145,16 +158,40 @@ def evaluate_link_prediction(model, data, num_samples=1000):
     pos_scores = score(emb[pos_u], emb[pos_v])
     neg_scores = score(emb[neg_u], emb[neg_v])
 
-    labels = torch.cat([torch.ones_like(pos_scores), torch.zeros_like(neg_scores)]).cpu()
+    # Ground truth labels and scores
+    labels = torch.cat([
+        torch.ones_like(pos_scores),
+        torch.zeros_like(neg_scores)
+    ]).cpu()
     scores = torch.cat([pos_scores, neg_scores]).cpu()
+    preds = (scores > 0).float()  # Threshold at 0
 
+    # Compute metrics
     auc = roc_auc_score(labels, scores)
     ap  = average_precision_score(labels, scores)
+    acc = accuracy_score(labels, preds)
+    precision = precision_score(labels, preds, zero_division=0)
+    recall = recall_score(labels, preds, zero_division=0)
+    f1 = f1_score(labels, preds, zero_division=0)
 
     print(f"\n=== Link Prediction ===")
-    print(f"  → ROC-AUC:       {auc:.4f}")
-    print(f"  → Avg Precision: {ap:.4f}")
-    return {'roc_auc': auc, 'avg_precision': ap}
+    print(f"  → Accuracy:       {acc:.4f}")
+    print(f"  → Precision:      {precision:.4f}")
+    print(f"  → Recall:         {recall:.4f}")
+    print(f"  → F1 Score:       {f1:.4f}")
+    print(f"  → ROC-AUC:        {auc:.4f}")
+    print(f"  → Avg Precision:  {ap:.4f}")
+
+    return EvaluationResult(
+        accuracy=acc,
+        precision=precision,
+        recall=recall,
+        f1=f1,
+        auc=auc,
+        ap=ap,
+        preds=preds
+    )
+
 
 def run_pipeline(data, labels,
                  pretrain_epochs=100, finetune_epochs=100,
@@ -179,9 +216,9 @@ def run_pipeline(data, labels,
 
     # 5) Evaluate classification
     print("\n--- Final Test Classification Metrics ---")
-    test_metrics = evaluate_classification(class_model, data, labels, data.test_mask)
+    classification_results = evaluate_classification(class_model, data, labels, data.test_mask)
 
     # 6) Evaluate link prediction
-    lp_metrics = evaluate_link_prediction(class_model, data)
+    lp_results = evaluate_link_prediction(class_model, data)
 
-    return class_model, test_metrics, lp_metrics
+    return class_model, classification_results, lp_results

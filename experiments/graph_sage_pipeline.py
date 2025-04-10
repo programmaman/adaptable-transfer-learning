@@ -1,5 +1,7 @@
 import torch
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+
+from experiments.experiment_utils import EvaluationResult
 from models.baselines import SimpleGraphSAGE
 from utils import get_device
 
@@ -99,13 +101,13 @@ def fine_tune(class_model, pretrain_model, data, labels,
 
         if epoch % log_every == 0 or epoch == epochs:
             metrics = evaluate_classification(class_model, data, labels, data.val_mask, verbose=False)
-            print(f"Epoch {epoch:03d} | Fine-tune Loss: {loss.item():.4f} | Val Acc: {metrics['accuracy']:.4f}")
+            print(f"Epoch {epoch:03d} | Fine-tune Loss: {loss.item():.4f} | Val Acc: {metrics.accuracy:.4f} | Val F1: {metrics.f1:.4f}")
     return class_model
 
-def evaluate_classification(model, data, labels, mask, verbose=True):
+def evaluate_classification(model, data, labels, mask, verbose=True) -> EvaluationResult:
     """
     Computes accuracy, precision, recall, and F1 on the given mask.
-    Returns a dict of metrics.
+    Returns an EvaluationResult object.
     """
     model.eval()
     with torch.no_grad():
@@ -124,16 +126,17 @@ def evaluate_classification(model, data, labels, mask, verbose=True):
         print(f"  → Recall:    {recall:.4f}")
         print(f"  → F1 Score:  {f1:.4f}")
 
-    return {
-        'accuracy': accuracy,
-        'precision': precision,
-        'recall': recall,
-        'f1': f1,
-    }
+    return EvaluationResult(
+        accuracy=accuracy,
+        precision=precision,
+        recall=recall,
+        f1=f1,
+        preds=preds
+    )
 
 def run_graphsage_pipeline(data, labels,
                             pretrain_epochs=100,
-                            finetune_epochs=100,
+                            finetune_epochs=1,
                             seed=None):
     """
     Orchestrates the full GraphSAGE workflow using modular steps.
@@ -157,6 +160,6 @@ def run_graphsage_pipeline(data, labels,
     # 5) Final evaluation on test set
     print("\n--- Final Test Classification Metrics ---")
     test_metrics = evaluate_classification(class_model, data, labels, data.test_mask)
-    print(f"\nFinal Test Accuracy: {test_metrics['accuracy']:.4f}")
+    print(f"\nFinal Test Accuracy: {test_metrics.accuracy:.4f}")
 
     return class_model, test_metrics

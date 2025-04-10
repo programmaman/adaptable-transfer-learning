@@ -11,7 +11,7 @@ from sklearn.metrics import (
     classification_report
 )
 
-from experiments.experiment_utils import sample_negative_edges
+from experiments.experiment_utils import sample_negative_edges, EvaluationResult
 from models.gpt_gnn import GPT_GNN, GNN, Classifier
 
 
@@ -193,7 +193,7 @@ def fine_tune_classifier(model, data, node_type, edge_time, edge_type,
         if epoch % log_every == 0 or epoch == finetune_epochs - 1:
             eval_metrics = evaluate_classifier(classifier, model, data, labels, val_mask, device, verbose=False)
             print(
-                f"Epoch {epoch:03d} | Fine-tune Loss: {loss.item():.4f} | Val Accuracy: {eval_metrics['Accuracy']:.4f}")
+                f"Epoch {epoch:03d} | Fine-tune Loss: {loss.item():.4f} | Val Accuracy: {eval_metrics.accuracy}")
 
     return classifier, train_mask, val_mask, test_mask
 
@@ -201,10 +201,10 @@ def fine_tune_classifier(model, data, node_type, edge_time, edge_type,
 # ------------------------
 # Evaluation Functions
 # ------------------------
-def evaluate_classifier(classifier, gnn_model, data, labels, mask, device, verbose=True):
+def evaluate_classifier(classifier, gnn_model, data, labels, mask, device, verbose=True) -> EvaluationResult:
     """
-    Evaluates node classification performance using the classifier on top of the GPT-GNN embeddings.
-    Returns a dictionary containing metrics and the raw predictions.
+    Evaluates node classification performance using the classifier on top of GPT-GNN embeddings.
+    Returns an EvaluationResult object.
     """
     classifier.eval()
     with torch.no_grad():
@@ -247,21 +247,20 @@ def evaluate_classifier(classifier, gnn_model, data, labels, mask, device, verbo
             print("\n  → Classification Report:")
             print(classification_report(true, pred_masked, digits=4))
 
-        # Return a dictionary of results (including predictions for further reporting)
-        return {
-            "Accuracy": acc,
-            "Precision": precision,
-            "Recall": recall,
-            "F1": f1,
-            "AUC": auc,
-            "preds": pred_masked
-        }
+        return EvaluationResult(
+            accuracy=acc,
+            precision=precision,
+            recall=recall,
+            f1=f1,
+            auc=auc,
+            preds=pred_masked
+        )
 
 
-def evaluate_gpt_link_prediction(model, data, rem_edge_list, ori_edge_list, device):
+def evaluate_gpt_link_prediction(model, data, rem_edge_list, ori_edge_list, device) -> EvaluationResult:
     """
-    Evaluates link prediction by computing scores for positive and negative edges.
-    Returns a dictionary of link prediction metrics.
+    Evaluates GPT-GNN link prediction performance by computing scores for
+    positive and negative edges. Returns an EvaluationResult object.
     """
     model.eval()
     with torch.no_grad():
@@ -275,7 +274,8 @@ def evaluate_gpt_link_prediction(model, data, rem_edge_list, ori_edge_list, devi
 
     # Retrieve positive edges from removed edge list
     pos_edges = rem_edge_list[0][0].to(device)
-    # Sample negative edges using the model's built-in function (assumed available)
+
+    # Sample negative edges
     neg_edges = sample_negative_edges(pos_edges, data.num_nodes).to(device)
 
     def score(u, v):
@@ -288,6 +288,7 @@ def evaluate_gpt_link_prediction(model, data, rem_edge_list, ori_edge_list, devi
     labels_lp = torch.cat([torch.ones_like(pos_scores), torch.zeros_like(neg_scores)])
     preds_lp = (scores > 0).float()
 
+    # Compute metrics
     acc = accuracy_score(labels_lp.cpu(), preds_lp.cpu())
     precision = precision_score(labels_lp.cpu(), preds_lp.cpu(), zero_division=0)
     recall = recall_score(labels_lp.cpu(), preds_lp.cpu(), zero_division=0)
@@ -303,21 +304,21 @@ def evaluate_gpt_link_prediction(model, data, rem_edge_list, ori_edge_list, devi
     print(f"  → AUC:       {auc:.4f}")
     print(f"  → AP:        {ap:.4f}")
 
-    return {
-        "LP-Accuracy": acc,
-        "LP-Precision": precision,
-        "LP-Recall": recall,
-        "LP-F1": f1,
-        "LP-AUC": auc,
-        "LP-AP": ap
-    }
-
+    return EvaluationResult(
+        accuracy=acc,
+        precision=precision,
+        recall=recall,
+        f1=f1,
+        auc=auc,
+        ap=ap,
+        preds=preds_lp
+    )
 
 # ------------------------
 # Pipeline Orchestration
 # ------------------------
 def run_gpt_gnn_pipeline(data, labels, hidden_dim=64, num_layers=2, num_heads=2,
-                         pretrain_epochs=100, finetune_epochs=100):
+                         pretrain_epochs=100, finetune_epochs=1):
     """
     Orchestrates the full GPT-GNN workflow:
       1. Preprocess the graph data.
@@ -368,10 +369,10 @@ def run_gpt_gnn_pipeline(data, labels, hidden_dim=64, num_layers=2, num_heads=2,
     print("\n=== Final Evaluation on Test Set ===")
     classification_results = evaluate_classifier(classifier, model, data, labels, test_mask, device)
     print("\n=== Classification Report ===")
-    print(classification_report(labels[test_mask].cpu(), classification_results['preds'].cpu(), digits=4))
+    print(classification_report(labels[test_mask].cpu(), classification_results.preds.cpu(), digits=4))
     print("=== Confusion Matrix ===")
-    print(confusion_matrix(labels[test_mask].cpu(), classification_results['preds'].cpu()))
-    print(f"\nFinal Test Accuracy: {classification_results['Accuracy']:.4f}")
+    print(confusion_matrix(labels[test_mask].cpu(), classification_results.preds.cpu()))
+    print(f"\nFinal Test Accuracy: {classification_results.accuracy:.4f}")
 
     # Evaluation: Link Prediction
     lp_results = evaluate_gpt_link_prediction(model, data, rem_edge_list, ori_edge_list, device)

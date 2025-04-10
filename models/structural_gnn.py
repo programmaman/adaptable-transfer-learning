@@ -199,7 +199,7 @@ class StructuralGNN(nn.Module):
     # 2.2 Link Prediction with In-batch Negatives
     ###########################################################################
 
-    def link_prediction_loss(self, embeddings, edge_index, neg_sample_size=5):
+    def link_prediction_loss(self, embeddings, edge_index, neg_sample_size=25):
         """
         Simple link-prediction loss using an MLP-based pairwise scorer.
 
@@ -301,6 +301,7 @@ class StructuralGNN(nn.Module):
 
         # (b) Link Prediction
         if do_linkpred:
+            print("Link prediction loss")
             lp_loss = self.link_prediction_loss(embeddings, edge_index, neg_sample_size)
             total_loss += lp_loss
 

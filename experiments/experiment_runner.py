@@ -20,31 +20,36 @@ def run_synthetic_experiments():
     data, labels = generate_synthetic_graph()
 
     print("\n========== [Synthetic] SimpleGNN ==========")
-    simplegnn_model, simplegnn_cls_results, simplegnn_lp_results = run_pipeline(data, labels)
+    _, simplegnn_cls_results, simplegnn_lp_results = run_pipeline(data, labels)
 
     print("\n========== [Synthetic] StructuralGCN ==========")
-    sgcn_model, sgcn_cls_results, sgcn_lp_results = run_structural_gcn_pipeline(data, labels)
+    _, sgcn_cls_results, sgcn_lp_results = run_structural_gcn_pipeline(data, labels)
 
     print("\n========== [Synthetic] GPT-GNN ==========")
-    gpt_model, gpt_cls_results, gpt_lp_results = run_gpt_gnn_pipeline(data, labels)
+    _, gpt_cls_results, gpt_lp_results = run_gpt_gnn_pipeline(data, labels)
 
     print("\n========== [Synthetic] StructuralGNN (Node2Vec) ==========")
-    structgnn_model, structgnn_classifier, structgnn_cls_results, structgnn_lp_results = run_structural_node2vec_pipeline(data, labels)
+    _, structgnn_classifier, structgnn_cls_results, structgnn_lp_results = run_structural_node2vec_pipeline(data, labels)
 
     print("\n========== [Synthetic] SimpleGraphSAGE ==========")
-    graphsage_model, graphsage_cls_acc = run_graphsage_pipeline(data, labels)
+    _, graphsage_cls_result = run_graphsage_pipeline(data, labels)
 
     print("\n========== [Synthetic] SimpleGAT ==========")
-    simplegat_model, simplegat_cls_results = run_gat_pipeline(data, labels)
+    _, simplegat_cls_results = run_gat_pipeline(data, labels)
 
-    print("\n========== [Synthetic] Summary ==========")
-    print(f"[Synthetic] SimpleGNN Final Test Accuracy:       {simplegnn_cls_results['accuracy']:.4f}")
-    print(f"[Synthetic] StructuralGCN Final Val Accuracy:    {sgcn_cls_results['Accuracy']:.4f}")
-    print(f"[Synthetic] GPT-GNN Final Test Accuracy:         {gpt_cls_results['Accuracy']:.4f}")
-    print(f"[Synthetic] StructuralGNN Final Test Accuracy:   {structgnn_cls_results['Accuracy']:.4f}")
-    print(f"[Synthetic] SimpleGAT Final Test Accuracy:       {simplegat_cls_results['accuracy']:.4f}")
-    print(f"[Synthetic] SimpleGraphSAGE Final Test Accuracy: {graphsage_cls_acc:.4f}")
+    print("\n=================== Classification Summary ===================")
+    print(f"[SimpleGNN]         {simplegnn_cls_results.summary()}")
+    print(f"[StructuralGCN]     {sgcn_cls_results.summary()}")
+    print(f"[GPT-GNN]           {gpt_cls_results.summary()}")
+    print(f"[StructuralGNN]     {structgnn_cls_results.summary()}")
+    print(f"[SimpleGraphSAGE]   {graphsage_cls_result.summary()}")
+    print(f"[SimpleGAT]         {simplegat_cls_results.summary()}")
 
+    print("\n=================== Link Prediction Summary ===================")
+    print(f"[SimpleGNN]         {simplegnn_lp_results.summary()}")
+    print(f"[StructuralGCN]     {sgcn_lp_results.summary()}")
+    print(f"[GPT-GNN]           {gpt_lp_results.summary()}")
+    print(f"[StructuralGNN]     {structgnn_lp_results.summary()}")
 
 
 
@@ -53,39 +58,46 @@ def run_facebook_experiments(edge_path, features_path, target_path):
 
     data, labels, label_encoder = load_musae_facebook_dataset(edge_path, features_path, target_path)
 
+    # Generate structural targets from clustering coefficient
     nx_g = to_networkx(data, to_undirected=True)
     clustering = nx.clustering(nx_g)
-
     data.structural_targets = torch.tensor(
         [clustering.get(i, 0.0) for i in range(data.num_nodes)],
         dtype=torch.float
     )
 
     print("\n========== [Facebook] SimpleGNN ==========")
-    simplegnn_model, simplegnn_test_acc = run_gnn_pipeline(data, labels)
+    simplegnn_model, simplegnn_cls_results, simplegnn_lp_results = run_pipeline(data, labels)
 
     print("\n========== [Facebook] StructuralGCN ==========")
-    structural_model, structural_loss, structural_gcn_acc = run_structural_gcn_pipeline(data, labels)
+    structural_model, structural_cls_results, structural_lp_results = run_structural_gcn_pipeline(data, labels)
 
     print("\n========== [Facebook] GPT-GNN ==========")
-    gpt_model, gpt_test_acc = run_gpt_gnn_pipeline(data, labels)
+    gpt_model, gpt_cls_results, gpt_lp_results = run_gpt_gnn_pipeline(data, labels)
 
     print("\n========== [Facebook] StructuralGNN (Node2Vec) ==========")
-    structural_model, structural_classifier, structural_acc = run_structural_node2vec_pipeline(data, labels)
+    structural_model, structural_classifier, structgnn_cls_results, structgnn_lp_results = run_structural_node2vec_pipeline(data, labels)
 
     print("\n========== [Facebook] SimpleGAT ==========")
-    simplegat_model, simplegat_test_acc = run_gat_pipeline(data, labels)
+    simplegat_model, simplegat_cls_results = run_gat_pipeline(data, labels)
 
     print("\n========== [Facebook] SimpleGraphSAGE ==========")
-    graphsage_model, graphsage_test_acc = run_graphsage_pipeline(data, labels)
+    graphsage_model, graphsage_cls_results = run_graphsage_pipeline(data, labels)
 
-    print("\n========== [Facebook] Summary ==========")
-    print(f"[Facebook] SimpleGNN Final Test Accuracy:       {simplegnn_test_acc:.4f}")
-    print(f"[Facebook] StructuralGCN Final Val Accuracy:    {structural_gcn_acc:.4f} | Loss: {structural_loss:.4f}")
-    print(f"[Facebook] GPT-GNN Final Test Accuracy:         {gpt_test_acc:.4f}")
-    print(f"[Facebook] StructuralGNN Final Test Accuracy:   {structural_acc:.4f}")
-    print(f"[Facebook] SimpleGAT Final Test Accuracy:         {simplegat_test_acc:.4f}")
-    print(f"[Facebook] SimpleGraphSAGE Final Test Accuracy:   {graphsage_test_acc:.4f}")
+    print("\n=================== Classification Summary ===================")
+    print(f"[SimpleGNN]         {simplegnn_cls_results.summary()}")
+    print(f"[StructuralGCN]     {structural_cls_results.summary()}")
+    print(f"[GPT-GNN]           {gpt_cls_results.summary()}")
+    print(f"[StructuralGNN]     {structgnn_cls_results.summary()}")
+    print(f"[SimpleGAT]         {simplegat_cls_results.summary()}")
+    print(f"[SimpleGraphSAGE]   {graphsage_cls_results.summary()}")
+
+    print("\n=================== Link Prediction Summary ===================")
+    print(f"[SimpleGNN]         {simplegnn_lp_results.summary()}")
+    print(f"[StructuralGCN]     {structural_lp_results.summary()}")
+    print(f"[GPT-GNN]           {gpt_lp_results.summary()}")
+    print(f"[StructuralGNN]     {structgnn_lp_results.summary()}")
+
 
 
 
@@ -103,7 +115,7 @@ def run_email_eu_core_experiments(edge_path, label_path):
     )
 
     print("\n========== [Email-EU-Core] SimpleGNN ==========")
-    simplegnn_model, simplegnn_test_acc = run_gnn_pipeline(data, labels)
+    simplegnn_model, simplegnn_test_acc = run_pipeline(data, labels)
 
     print("\n========== [Email-EU-Core] StructuralGCN ==========")
     structural_model, structural_loss, structural_gcn_acc = run_structural_gcn_pipeline(data, labels)

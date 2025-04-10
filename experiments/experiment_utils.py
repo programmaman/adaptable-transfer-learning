@@ -94,6 +94,61 @@ def load_musae_facebook_dataset(edge_path, features_path, target_path):
 
     return data, labels, label_encoder
 
+import json
+import pandas as pd
+import torch
+from torch_geometric.data import Data
+from sklearn.preprocessing import LabelEncoder
+
+def load_musae_github_dataset(edge_path, features_path, target_path):
+    # Load edges
+    edges_df = pd.read_csv(edge_path)
+    edge_index = torch.tensor(edges_df.values.T, dtype=torch.long)  # shape [2, num_edges]
+
+    # Load features
+    with open(features_path, 'r') as f:
+        features_dict = json.load(f)
+
+    # Build a consistent node ID mapping
+    node_ids = sorted(set(int(k) for k in features_dict.keys()))
+    node_id_map = {node_id: i for i, node_id in enumerate(node_ids)}  # external → internal ID
+
+    # Build feature matrix
+    num_nodes = len(node_ids)
+    num_features = max(f for feats in features_dict.values() for f in feats) + 1
+    x = torch.zeros((num_nodes, num_features))
+    for raw_id, feats in features_dict.items():
+        mapped_id = node_id_map[int(raw_id)]
+        x[mapped_id, feats] = 1.0
+
+    # Load labels
+    target_df = pd.read_csv(target_path)
+    target_df = target_df[target_df['id'].isin(node_ids)]
+    target_df['mapped_id'] = target_df['id'].map(node_id_map)
+
+    label_encoder = LabelEncoder()
+    labels = torch.full((num_nodes,), -1, dtype=torch.long)
+    encoded_labels = label_encoder.fit_transform(target_df['ml_target'])
+    labels[target_df['mapped_id']] = torch.tensor(encoded_labels, dtype=torch.long)
+
+    # Filter valid edges
+    edge_list = edge_index.t().tolist()
+    filtered_edges = [
+        [node_id_map[src], node_id_map[dst]]
+        for src, dst in edge_list
+        if src in node_id_map and dst in node_id_map
+    ]
+    edge_index = torch.tensor(filtered_edges, dtype=torch.long).t().contiguous()
+
+    # Build PyG Data object
+    data = Data(x=x, edge_index=edge_index)
+
+    print(f"Loaded GitHub graph with {data.num_nodes} nodes, {data.num_edges} edges, {x.size(1)} features")
+    print(f"Label coverage: {(labels >= 0).sum().item()} / {len(labels)} nodes labeled")
+
+    return data, labels, label_encoder
+
+
 import torch
 from torch_geometric.data import Data
 import pandas as pd
@@ -171,3 +226,30 @@ def split_edges_for_link_prediction(edge_index: torch.Tensor, removal_ratio: flo
     # Match expected format: {0: [Tensor of shape [num_removed, 2]]}
     rem_edge_list = {0: [removed_edges.t()]}  # [num_edges, 2]
     return remaining_edges, rem_edge_list
+
+from dataclasses import dataclass
+from typing import Optional, Any
+
+
+@dataclass
+class EvaluationResult:
+    accuracy: float
+    precision: float
+    recall: float
+    f1: float
+    auc: Optional[float] = None
+    ap: Optional[float] = None  # Only used in link prediction
+    preds: Optional[Any] = None  # Raw predictions (can be tensor or list)
+
+    def summary(self) -> str:
+        parts = [
+            f"Accuracy: {self.accuracy:.4f}",
+            f"Precision: {self.precision:.4f}",
+            f"Recall: {self.recall:.4f}",
+            f"F1: {self.f1:.4f}",
+        ]
+        if self.auc is not None:
+            parts.append(f"AUC: {self.auc:.4f}")
+        if self.ap is not None:
+            parts.append(f"AP: {self.ap:.4f}")
+        return " | ".join(parts)

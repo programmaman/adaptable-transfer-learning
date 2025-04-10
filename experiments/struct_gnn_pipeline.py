@@ -7,7 +7,7 @@ from sklearn.metrics import (
     roc_auc_score, average_precision_score
 )
 
-from experiments.experiment_utils import sample_negative_edges, split_edges_for_link_prediction
+from experiments.experiment_utils import sample_negative_edges, split_edges_for_link_prediction, EvaluationResult
 from utils import get_device
 
 
@@ -178,27 +178,16 @@ def pretrain_full_model(
 # ------------------------
 # Evaluation Functions
 # ------------------------
-def evaluate_classification(model, classifier, data, labels, mask, device, verbose: bool = True):
+def evaluate_classification(model, classifier, data, labels, mask, device, verbose: bool = True) -> EvaluationResult:
     """
-    Evaluates node classification performance.
-
-    Args:
-        model: The StructuralGNN model.
-        classifier: The classification head.
-        data: Graph data object.
-        labels: Node labels tensor.
-        mask: Boolean mask for evaluation split.
-        device: Computation device.
-        verbose: Whether to print detailed metrics.
-
-    Returns:
-        A dictionary of classification metrics.
+    Evaluates node classification performance for a GNN model + classifier head.
+    Returns an EvaluationResult object.
     """
-    from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
     model.eval()
     classifier.eval()
-    # Define node indices as all nodes
+
     node_indices = torch.arange(data.num_nodes, device=device)
+
     with torch.no_grad():
         embeddings = model(data.x.to(device), data.edge_index.to(device), node_indices)
         logits = classifier(embeddings)
@@ -206,6 +195,7 @@ def evaluate_classification(model, classifier, data, labels, mask, device, verbo
         true = labels[mask]
 
     preds, true = preds.cpu(), true.cpu()
+
     acc = accuracy_score(true, preds)
     precision = precision_score(true, preds, average='macro', zero_division=0)
     recall = recall_score(true, preds, average='macro', zero_division=0)
@@ -224,29 +214,30 @@ def evaluate_classification(model, classifier, data, labels, mask, device, verbo
         if auc is not None:
             print(f"  → AUC (OvR): {auc:.4f}")
 
-    return {"Accuracy": acc, "Precision": precision, "Recall": recall, "F1": f1, "AUC": auc, "preds": preds}
+    return EvaluationResult(
+        accuracy=acc,
+        precision=precision,
+        recall=recall,
+        f1=f1,
+        auc=auc,
+        preds=preds
+    )
 
 
-def evaluate_link_prediction(model, data, rem_edge_list, device):
+def evaluate_link_prediction(model, data, rem_edge_list, device) -> EvaluationResult:
     """
-    Evaluates link prediction performance.
-
-    Args:
-        model: The trained StructuralGNN model.
-        data: The graph data object.
-        rem_edge_list: Dictionary of removed edges.
-        device: Computation device.
-
-    Returns:
-        A dictionary with link prediction metrics.
+    Evaluates link prediction performance on removed edges using dot product scoring.
+    Returns an EvaluationResult object.
     """
     model.eval()
     with torch.no_grad():
         node_indices = torch.arange(data.num_nodes, device=device)
         emb = model(data.x.to(device), data.edge_index.to(device), node_indices)
 
-    # Positive edges from removed list; negative edges are sampled
+    # Positive edges from removed edge list
     pos_edges = rem_edge_list[0][0].to(device)
+
+    # Sample negative edges
     neg_edges = sample_negative_edges(pos_edges, data.num_nodes).to(device)
 
     def score(u, v):
@@ -258,6 +249,7 @@ def evaluate_link_prediction(model, data, rem_edge_list, device):
     lp_labels = torch.cat([torch.ones_like(pos_scores), torch.zeros_like(neg_scores)])
     preds = (scores > 0).float()
 
+    # Compute metrics
     acc = accuracy_score(lp_labels.cpu(), preds.cpu())
     precision = precision_score(lp_labels.cpu(), preds.cpu(), zero_division=0)
     recall = recall_score(lp_labels.cpu(), preds.cpu(), zero_division=0)
@@ -273,14 +265,15 @@ def evaluate_link_prediction(model, data, rem_edge_list, device):
     print(f"  → AUC:       {auc:.4f}")
     print(f"  → AP:        {ap:.4f}")
 
-    return {
-        "LP-Accuracy": acc,
-        "LP-Precision": precision,
-        "LP-Recall": recall,
-        "LP-F1": f1,
-        "LP-AUC": auc,
-        "LP-AP": ap
-    }
+    return EvaluationResult(
+        accuracy=acc,
+        precision=precision,
+        recall=recall,
+        f1=f1,
+        auc=auc,
+        ap=ap,
+        preds=preds
+    )
 
 
 # ------------------------
@@ -328,6 +321,10 @@ def finetune_classification(model, classifier, data, labels, train_mask, finetun
     return model, classifier
 
 
+# Fine Tune Link Prediction
+
+
+
 # ------------------------
 # Main Pipeline Function
 # ------------------------
@@ -340,7 +337,7 @@ def run_structural_node2vec_pipeline(
         num_layers: int = 2,
         node2vec_pretrain_epochs: int = 100,
         full_pretrain_epochs: int = 100,
-        finetune_epochs: int = 100,
+        finetune_epochs: int = 1,
         do_linkpred: bool = True,
         do_n2v_align: bool = True,
         do_featrec: bool = False,
@@ -378,7 +375,7 @@ def run_structural_node2vec_pipeline(
     data.test_mask = test_mask
 
     # Generate node indices for forward passes.
-    data.edge_index, rem_edge_list = split_edges_for_link_prediction(data.edge_index, removal_ratio=0.1)
+    data.edge_index, rem_edge_list = split_edges_for_link_prediction(data.edge_index, removal_ratio=0.3)
     node_indices = torch.arange(num_nodes, device=device)
 
     # Initialize model.

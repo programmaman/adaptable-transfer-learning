@@ -4,10 +4,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch_geometric.nn as pyg_nn
 import torch.nn.functional as f
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report, \
-    roc_auc_score, average_precision_score
 
-# Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -141,98 +138,3 @@ def fine_tune_link_prediction(model, data, epochs=50, lr=0.01, weight_decay=0.01
 
     return model
 
-def evaluate_model(model, data, labels, device, verbose=True):
-    model.eval()
-    with torch.no_grad():
-        logits = model(data.x.to(device), data.edge_index.to(device))
-        probs = f.softmax(logits, dim=1)
-        preds = probs.argmax(dim=1)
-
-        true = labels.cpu()
-        pred = preds.cpu()
-        prob = probs.cpu()
-
-        acc = accuracy_score(true, pred)
-        precision = precision_score(true, pred, average='macro', zero_division=0)
-        recall = recall_score(true, pred, average='macro', zero_division=0)
-        f1 = f1_score(true, pred, average='macro', zero_division=0)
-
-        try:
-            auc = roc_auc_score(true, prob, multi_class='ovr', average='macro')
-        except ValueError:
-            auc = None
-
-        if verbose:
-            print(f"\n=== Node Classification ===")
-            print(f"  → Accuracy:  {acc:.4f}")
-            print(f"  → Precision: {precision:.4f}")
-            print(f"  → Recall:    {recall:.4f}")
-            print(f"  → F1 Score:  {f1:.4f}")
-            if auc is not None:
-                print(f"  → AUC (OvR): {auc:.4f}")
-            print("  → Classification Report:")
-            print(classification_report(true, pred, digits=4))
-
-        return {
-            "Accuracy": acc,
-            "Precision": precision,
-            "Recall": recall,
-            "F1": f1,
-            "AUC": auc
-        }
-
-def evaluate_link_prediction(model, data, num_samples=1000, device='cpu'):
-    model.eval()
-    data = data.to(device)
-
-    with torch.no_grad():
-        emb = model(data.x, data.edge_index)
-
-    if emb.dim() == 1:
-        emb = emb.unsqueeze(-1)
-
-    num_nodes = data.num_nodes
-    edge_index = data.edge_index
-
-    pos_idx = torch.randperm(edge_index.size(1))[:num_samples]
-    pos_src, pos_dst = edge_index[0, pos_idx], edge_index[1, pos_idx]
-
-    neg_src = torch.randint(0, num_nodes, (num_samples,), device=device)
-    neg_dst = torch.randint(0, num_nodes, (num_samples,), device=device)
-
-    def dot_score(u, v): return (u * v).sum(dim=1)
-
-    pos_score = dot_score(emb[pos_src], emb[pos_dst])
-    neg_score = dot_score(emb[neg_src], emb[neg_dst])
-
-    scores = torch.cat([pos_score, neg_score])
-    labels = torch.cat([
-        torch.ones_like(pos_score),
-        torch.zeros_like(neg_score)
-    ])
-
-    preds = (scores > 0).float()
-
-    acc = accuracy_score(labels.cpu(), preds.cpu())
-    precision = precision_score(labels.cpu(), preds.cpu(), zero_division=0)
-    recall = recall_score(labels.cpu(), preds.cpu(), zero_division=0)
-    f1 = f1_score(labels.cpu(), preds.cpu(), zero_division=0)
-    auc = roc_auc_score(labels.cpu(), scores.cpu())
-    ap = average_precision_score(labels.cpu(), scores.cpu())
-
-    print(f"\n=== Link Prediction ===")
-    print(f"  → Accuracy:  {acc:.4f}")
-    print(f"  → Precision: {precision:.4f}")
-    print(f"  → Recall:    {recall:.4f}")
-    print(f"  → F1 Score:  {f1:.4f}")
-    print(f"  → AUC:       {auc:.4f}")
-    print(f"  → AP:        {ap:.4f}")
-
-    return {
-        "LP-Accuracy": acc,
-        "LP-Precision": precision,
-        "LP-Recall": recall,
-        "LP-F1": f1,
-        "LP-AUC": auc,
-        "LP-AP": ap
-    }
