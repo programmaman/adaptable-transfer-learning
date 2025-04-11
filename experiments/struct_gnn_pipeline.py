@@ -162,7 +162,7 @@ def pretrain_full_model(
             do_n2v_align=do_n2v_align
         )
         logits = classifier(embeddings)
-        cls_loss = criterion(logits[train_mask], labels[train_mask].to(logits.device))
+        cls_loss = criterion(logits[train_mask], labels.to(logits.device)[train_mask])
         total_loss = pretrain_loss + cls_loss
 
         total_loss.backward()
@@ -183,8 +183,12 @@ def evaluate_classification(model, classifier, data, labels, mask, device, verbo
     Evaluates node classification performance for a GNN model + classifier head.
     Returns an EvaluationResult object.
     """
+
     model.eval()
     classifier.eval()
+    labels = labels.to(device)
+    mask = mask.to(device)
+
 
     node_indices = torch.arange(data.num_nodes, device=device)
 
@@ -232,7 +236,8 @@ def evaluate_link_prediction(model, data, rem_edge_list, device) -> EvaluationRe
     model.eval()
     with torch.no_grad():
         node_indices = torch.arange(data.num_nodes, device=device)
-        emb = model(data.x.to(device), data.edge_index.to(device), node_indices)
+        gnn_emb = model(data.x.to(device), data.edge_index.to(device), node_indices)
+        n2v_emb = model.node2vec_layer(node_indices)
 
     # Positive edges from removed edge list
     pos_edges = rem_edge_list[0][0].to(device)
@@ -241,21 +246,31 @@ def evaluate_link_prediction(model, data, rem_edge_list, device) -> EvaluationRe
     neg_edges = sample_negative_edges(pos_edges, data.num_nodes).to(device)
 
     def score(u, v):
-        return (emb[u] * emb[v]).sum(dim=-1)
+        return model._pairwise_score(
+            gnn_emb[u], gnn_emb[v],
+            n2v_emb[u], n2v_emb[v]
+        ).squeeze()
 
     pos_scores = score(pos_edges[:, 0], pos_edges[:, 1])
     neg_scores = score(neg_edges[:, 0], neg_edges[:, 1])
     scores = torch.cat([pos_scores, neg_scores])
     lp_labels = torch.cat([torch.ones_like(pos_scores), torch.zeros_like(neg_scores)])
-    preds = (scores > 0).float()
+    print(
+        f"\n→ Pos scores: mean={pos_scores.mean().item():.4f}, min={pos_scores.min().item():.4f}, max={pos_scores.max().item():.4f}")
+    print(
+        f"→ Neg scores: mean={neg_scores.mean().item():.4f}, min={neg_scores.min().item():.4f}, max={neg_scores.max().item():.4f}")
+    print(
+        f"→ Sigmoid scores range: [{torch.sigmoid(scores).min().item():.4f}, {torch.sigmoid(scores).max().item():.4f}]")
+
+    preds = (torch.sigmoid(scores) > 0.5).float()
 
     # Compute metrics
     acc = accuracy_score(lp_labels.cpu(), preds.cpu())
     precision = precision_score(lp_labels.cpu(), preds.cpu(), zero_division=0)
     recall = recall_score(lp_labels.cpu(), preds.cpu(), zero_division=0)
     f1 = f1_score(lp_labels.cpu(), preds.cpu(), zero_division=0)
-    auc = roc_auc_score(lp_labels.cpu(), scores.cpu())
-    ap = average_precision_score(lp_labels.cpu(), scores.cpu())
+    auc = roc_auc_score(lp_labels.cpu().detach(), scores.cpu().detach())
+    ap = average_precision_score(lp_labels.cpu().detach(), scores.cpu().detach())
 
     print("\n=== Link Prediction Evaluation ===")
     print(f"  → Accuracy:  {acc:.4f}")
@@ -310,7 +325,7 @@ def finetune_classification(model, classifier, data, labels, train_mask, finetun
         optimizer.zero_grad()
         embeddings = model(data_x, edge_index, node_indices)
         logits = classifier(embeddings)
-        loss = criterion(logits[train_mask], labels[train_mask].to(device))
+        loss = criterion(logits[train_mask], labels.to(device)[train_mask])
         loss.backward()
         optimizer.step()
 
@@ -322,6 +337,64 @@ def finetune_classification(model, classifier, data, labels, train_mask, finetun
 
 
 # Fine Tune Link Prediction
+
+def finetune_link_prediction(
+    model,
+    data,
+    rem_edge_list,
+    finetune_epochs: int,
+    neg_sample_size: int = 5,
+    lr: float = 0.01,
+    weight_decay: float = 5e-4,
+    device=None,
+    log_every: int = 10
+):
+    """
+    Fine-tunes StructuralGNN for link prediction using supervised link supervision.
+
+    Args:
+        model: The StructuralGNN model.
+        data: A PyG data object.
+        rem_edge_list: Held-out edge list from split_edges_for_link_prediction.
+        finetune_epochs: Number of fine-tuning epochs.
+        neg_sample_size: Number of in-batch negatives per positive.
+        lr: Learning rate.
+        weight_decay: Weight decay for Adam optimizer.
+        device: Device to run on.
+        log_every: Print frequency.
+
+    Returns:
+        model: Fine-tuned model.
+    """
+    print("\n=== Phase 3: Fine-tuning for Link Prediction ===")
+
+    if device is None:
+        device = get_device()
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    node_indices = torch.arange(data.num_nodes, device=device)
+    data.edge_index = data.edge_index.to(device)
+    data.x = data.x.to(device)
+
+    for epoch in range(finetune_epochs):
+        model.train()
+        optimizer.zero_grad()
+
+        # Get updated embeddings
+        embeddings = model(data.x, data.edge_index, node_indices)
+
+        # Supervised link prediction loss on held-out edges
+        loss = model.link_prediction_loss(embeddings, rem_edge_list[0][0].T.to(device), neg_sample_size=neg_sample_size)
+
+        loss.backward()
+        optimizer.step()
+
+        if epoch % log_every == 0 or epoch == finetune_epochs - 1:
+            print(f"[Fine-tune LP Epoch {epoch:03d}] Loss: {loss.item():.4f}")
+            _ = evaluate_link_prediction(model, data, rem_edge_list, device)
+
+    return model
+
 
 
 
@@ -337,7 +410,7 @@ def run_structural_node2vec_pipeline(
         num_layers: int = 2,
         node2vec_pretrain_epochs: int = 100,
         full_pretrain_epochs: int = 100,
-        finetune_epochs: int = 1,
+        finetune_epochs: int = 50,
         do_linkpred: bool = True,
         do_n2v_align: bool = True,
         do_featrec: bool = False,
@@ -397,7 +470,7 @@ def run_structural_node2vec_pipeline(
     # (Optionally) Evaluate link prediction performance.
     lp_results = None
     if do_linkpred:
-        # Here we assume the model stores a removed edge list (model.rem_edge_list) for evaluation.
+        model = finetune_link_prediction(model, data, rem_edge_list, finetune_epochs=25, device=device)
         lp_results = evaluate_link_prediction(model, data, rem_edge_list, device)
 
     # Phase 3: Fine-tune for node classification.

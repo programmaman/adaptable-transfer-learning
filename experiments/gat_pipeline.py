@@ -174,7 +174,7 @@ def evaluate_classification(model, data, labels, mask, verbose=False) -> Evaluat
 # ------------------------
 # 6. Full Pipeline Orchestration
 # ------------------------
-def run_gat_pipeline(data, labels, heads=1, pretrain_epochs=100, finetune_epochs=1, seed=None):
+def run_gat_pipeline(data, labels, heads=1, pretrain_epochs=100, finetune_epochs=50, seed=None):
     """
     Orchestrates the complete pipeline for a GAT model: data preparation, pretraining,
     evaluation of pretraining, fine-tuning for classification, and final evaluation.

@@ -5,4 +5,4 @@ COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . /app
 ENV PYTHONPATH="/app"
-CMD ["/bin/bash"]
+CMD ["python", "experiments/experiment_runner.py"]

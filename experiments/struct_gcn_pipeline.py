@@ -123,7 +123,7 @@ def evaluate_link_prediction(model, data, num_samples=1000, device='cpu') -> Eva
     )
 
 
-def run_structural_gcn_pipeline(data, labels, hidden_dim=64, mid_dim=32, pretrain_epochs=100, finetune_epochs=1):
+def run_structural_gcn_pipeline(data, labels, hidden_dim=64, mid_dim=32, pretrain_epochs=100, finetune_epochs=50):
     device = get_device()
 
     #Print Device

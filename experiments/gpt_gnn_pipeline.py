@@ -184,7 +184,7 @@ def fine_tune_classifier(model, data, node_type, edge_time, edge_type,
             edge_type.to(device)
         )
         out = classifier(node_emb)
-        loss = criterion(out[train_mask], labels[train_mask].to(device))
+        loss = criterion(out[train_mask], labels.to(device)[train_mask])
 
         clf_optimizer.zero_grad()
         loss.backward()
@@ -221,7 +221,8 @@ def evaluate_classifier(classifier, gnn_model, data, labels, mask, device, verbo
         preds = probs.argmax(dim=1)
 
         # Apply mask
-        true = labels[mask].cpu()
+        mask = mask.to(device)
+        true = labels.to(device)[mask].cpu()
         pred_masked = preds[mask].cpu()
         probs_masked = probs[mask].cpu()
 
@@ -259,9 +260,10 @@ def evaluate_classifier(classifier, gnn_model, data, labels, mask, device, verbo
 
 def evaluate_gpt_link_prediction(model, data, rem_edge_list, ori_edge_list, device) -> EvaluationResult:
     """
-    Evaluates GPT-GNN link prediction performance by computing scores for
-    positive and negative edges. Returns an EvaluationResult object.
+    Evaluates link prediction performance in a homogeneous GPT-GNN setting.
+    Uses the first Matcher module found for scoring, and returns standard metrics.
     """
+
     model.eval()
     with torch.no_grad():
         emb = model(
@@ -272,31 +274,44 @@ def evaluate_gpt_link_prediction(model, data, rem_edge_list, ori_edge_list, devi
             data.edge_type.to(device)
         )
 
-    # Retrieve positive edges from removed edge list
-    pos_edges = rem_edge_list[0][0].to(device)
+    # === 1. Grab positive edges (assumes homogeneous setting: single [0][0] key) ===
+    pos_edges = rem_edge_list[0][0]
+    pos_edges = torch.LongTensor(pos_edges).to(device)
 
-    # Sample negative edges
-    neg_edges = sample_negative_edges(pos_edges, data.num_nodes).to(device)
+    if pos_edges.size(0) == 0:
+        raise ValueError("No positive edges found in rem_edge_list[0][0].")
 
-    def score(u, v):
-        return (emb[u] * emb[v]).sum(dim=-1)
+    num_nodes = emb.size(0)
+    src = pos_edges[:, 0]
+    dst = pos_edges[:, 1]
 
-    pos_scores = score(pos_edges[:, 0], pos_edges[:, 1])
-    neg_scores = score(neg_edges[:, 0], neg_edges[:, 1])
+    # === 2. Generate random negative edges (homogeneous setting) ===
+    neg_dst = torch.randint(0, num_nodes, size=dst.size(), device=device)
+    neg_edges = torch.stack([src, neg_dst], dim=1)
 
-    scores = torch.cat([pos_scores, neg_scores])
-    labels_lp = torch.cat([torch.ones_like(pos_scores), torch.zeros_like(neg_scores)])
-    preds_lp = (scores > 0).float()
+    # === 3. Use first Matcher module from model (homogeneous graph, no types) ===
+    matcher = next(iter(next(iter(model.link_dec_dict.values())).values()))
 
-    # Compute metrics
-    acc = accuracy_score(labels_lp.cpu(), preds_lp.cpu())
-    precision = precision_score(labels_lp.cpu(), preds_lp.cpu(), zero_division=0)
-    recall = recall_score(labels_lp.cpu(), preds_lp.cpu(), zero_division=0)
-    f1 = f1_score(labels_lp.cpu(), preds_lp.cpu(), zero_division=0)
-    auc = roc_auc_score(labels_lp.cpu(), scores.cpu())
-    ap = average_precision_score(labels_lp.cpu(), scores.cpu())
+    def score_edges(edges):
+        u, v = edges[:, 0], edges[:, 1]
+        return matcher(emb[v], emb[u])  # Matcher expects (target, source)
 
-    print("\n=== GPT-GNN Link Prediction ===")
+    pos_scores = score_edges(pos_edges)
+    neg_scores = score_edges(neg_edges)
+
+    # === 4. Evaluate ===
+    scores = torch.cat([pos_scores, neg_scores], dim=0).squeeze()
+    labels = torch.cat([torch.ones_like(pos_scores), torch.zeros_like(neg_scores)], dim=0).squeeze()
+    preds = (scores > 0).float()
+
+    acc = accuracy_score(labels.cpu(), preds.cpu())
+    precision = precision_score(labels.cpu(), preds.cpu(), zero_division=0)
+    recall = recall_score(labels.cpu(), preds.cpu(), zero_division=0)
+    f1 = f1_score(labels.cpu(), preds.cpu(), zero_division=0)
+    auc = roc_auc_score(labels.cpu().detach(), scores.cpu().detach())
+    ap = average_precision_score(labels.cpu().detach(), scores.cpu().detach())
+
+    print(f"\n=== GPT-GNN Link Prediction (Homogeneous) ===")
     print(f"  → Accuracy:  {acc:.4f}")
     print(f"  → Precision: {precision:.4f}")
     print(f"  → Recall:    {recall:.4f}")
@@ -311,14 +326,15 @@ def evaluate_gpt_link_prediction(model, data, rem_edge_list, ori_edge_list, devi
         f1=f1,
         auc=auc,
         ap=ap,
-        preds=preds_lp
+        preds=preds
     )
+
 
 # ------------------------
 # Pipeline Orchestration
 # ------------------------
 def run_gpt_gnn_pipeline(data, labels, hidden_dim=64, num_layers=2, num_heads=2,
-                         pretrain_epochs=100, finetune_epochs=1):
+                         pretrain_epochs=100, finetune_epochs=50):
     """
     Orchestrates the full GPT-GNN workflow:
       1. Preprocess the graph data.
@@ -369,9 +385,10 @@ def run_gpt_gnn_pipeline(data, labels, hidden_dim=64, num_layers=2, num_heads=2,
     print("\n=== Final Evaluation on Test Set ===")
     classification_results = evaluate_classifier(classifier, model, data, labels, test_mask, device)
     print("\n=== Classification Report ===")
-    print(classification_report(labels[test_mask].cpu(), classification_results.preds.cpu(), digits=4))
+    print(classification_report(labels.to(test_mask.device)[test_mask].cpu(), classification_results.preds.cpu(),
+                                digits=4))
     print("=== Confusion Matrix ===")
-    print(confusion_matrix(labels[test_mask].cpu(), classification_results.preds.cpu()))
+    print(confusion_matrix(labels.to(test_mask.device)[test_mask].cpu(), classification_results.preds.cpu()))
     print(f"\nFinal Test Accuracy: {classification_results.accuracy:.4f}")
 
     # Evaluation: Link Prediction

@@ -194,7 +194,7 @@ def evaluate_link_prediction(model, data, num_samples=1000) -> EvaluationResult:
 
 
 def run_pipeline(data, labels,
-                 pretrain_epochs=100, finetune_epochs=100,
+                 pretrain_epochs=100, finetune_epochs=50,
                  seed=None):
     """
     Orchestrates the full GNN workflow using the modular steps.

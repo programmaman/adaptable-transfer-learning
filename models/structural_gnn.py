@@ -111,7 +111,7 @@ class StructuralGNN(nn.Module):
 
         # Pairwise link predictor (instead of raw cosine) for link prediction
         # We use a small 2-layer MLP that sees [u, v, u*v]
-        mlp_in_dim = output_dim * 3
+        mlp_in_dim = (output_dim + embedding_dim) * 3
         self.link_predictor = nn.Sequential(
             nn.Linear(mlp_in_dim, hidden_dim),
             nn.ReLU(),
@@ -200,44 +200,44 @@ class StructuralGNN(nn.Module):
     ###########################################################################
 
     def link_prediction_loss(self, embeddings, edge_index, neg_sample_size=25):
-        """
-        Simple link-prediction loss using an MLP-based pairwise scorer.
-
-        We'll do in-batch negatives: for each positive edge in the batch, we
-        pick random negative edges by replacing one endpoint.
-
-        embeddings: [num_nodes, output_dim]
-        edge_index: [2, num_edges] (all edges or a mini-batch of edges)
-        """
         src, dst = edge_index
-
-        # 1) Positive scores
-        pos_score = self._pairwise_score(embeddings[src], embeddings[dst])
-
-        # 2) Negative sampling: for demonstration, we just pick random dst
         num_nodes = embeddings.size(0)
-        neg_dst = torch.randint(0, num_nodes, (neg_sample_size * src.size(0),),
-                                device=src.device)
-        neg_src = src.repeat(neg_sample_size)
-        neg_score = self._pairwise_score(embeddings[neg_src], embeddings[neg_dst])
 
-        # 3) Combine
-        logits = torch.cat([pos_score, neg_score], dim=0)  # shape: [num_pos + num_neg, 1]
+        # Get frozen Node2Vec embeddings
+        with torch.no_grad():
+            node2vec_emb = self.node2vec_layer(torch.arange(num_nodes, device=embeddings.device))
+
+        # Negative sampling
+        neg_dst = torch.randint(0, num_nodes, (neg_sample_size * src.size(0),), device=src.device)
+        neg_src = src.repeat(neg_sample_size)
+
+        # Compute scores
+        pos_score = self._pairwise_score(
+            embeddings[src], embeddings[dst],
+            node2vec_emb[src], node2vec_emb[dst]
+        )
+        neg_score = self._pairwise_score(
+            embeddings[neg_src], embeddings[neg_dst],
+            node2vec_emb[neg_src], node2vec_emb[neg_dst]
+        )
+
+        # Combine for loss
+        logits = torch.cat([pos_score, neg_score], dim=0)
         labels = torch.cat([
             torch.ones_like(pos_score),
             torch.zeros_like(neg_score)
         ], dim=0)
 
-        # 4) Binary cross entropy
         return F.binary_cross_entropy_with_logits(logits, labels)
 
-    def _pairwise_score(self, emb_u, emb_v):
+    def _pairwise_score(self, gnn_u, gnn_v, n2v_u, n2v_v):
         """
-        Use a small MLP over [u, v, u*v] to produce a scalar link score.
-        emb_u, emb_v: [batch_size, output_dim]
+        Simple MLP over [u, v, u*v] using concatenated GNN and Node2Vec embeddings.
         """
-        uv_cat = torch.cat([emb_u, emb_v, emb_u * emb_v], dim=-1)
-        return self.link_predictor(uv_cat)  # [batch_size, 1]
+        u = torch.cat([gnn_u, n2v_u], dim=-1)
+        v = torch.cat([gnn_v, n2v_v], dim=-1)
+        uv_cat = torch.cat([u, v, u * v], dim=-1)
+        return self.link_predictor(uv_cat)
 
     ###########################################################################
     # 2.3 Optional Feature Reconstruction
@@ -301,7 +301,6 @@ class StructuralGNN(nn.Module):
 
         # (b) Link Prediction
         if do_linkpred:
-            print("Link prediction loss")
             lp_loss = self.link_prediction_loss(embeddings, edge_index, neg_sample_size)
             total_loss += lp_loss
 

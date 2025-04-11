@@ -136,7 +136,7 @@ def evaluate_classification(model, data, labels, mask, verbose=True) -> Evaluati
 
 def run_graphsage_pipeline(data, labels,
                             pretrain_epochs=100,
-                            finetune_epochs=1,
+                            finetune_epochs=50,
                             seed=None):
     """
     Orchestrates the full GraphSAGE workflow using modular steps.
