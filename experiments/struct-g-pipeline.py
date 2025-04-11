@@ -1,6 +1,7 @@
+import time
+
 import torch
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-import time
 
 from utils import get_device
 

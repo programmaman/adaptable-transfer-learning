@@ -11,7 +11,7 @@ from sklearn.metrics import (
     classification_report
 )
 
-from experiments.experiment_utils import sample_negative_edges, EvaluationResult
+from experiments.experiment_utils import EvaluationResult
 from models.gpt_gnn import GPT_GNN, GNN, Classifier
 
 

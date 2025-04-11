@@ -1,9 +1,10 @@
 import time
+
 import dgl
 import numpy as np
 import torch
-from sklearn.model_selection import StratifiedShuffleSplit
 import torch.nn.functional as f
+from sklearn.model_selection import StratifiedShuffleSplit
 
 import utils  # Utility functions: seed_torch, evaluate, get_init_info
 from models.gppt import GraphSAGE

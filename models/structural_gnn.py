@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch_geometric.nn as pyg_nn
-from torch_geometric.utils import degree
+
 
 ###############################################################################
 # 1. Node2Vec-based Structural Layer
@@ -12,6 +12,7 @@ class StructLayer(nn.Module):
     """
     A thin wrapper around PyG's Node2Vec for modularity.
     """
+
     def __init__(self, num_nodes, edge_index, embedding_dim=128, walk_length=10,
                  context_size=5, walks_per_node=10, num_negative_samples=1,
                  p=1.0, q=1.0, sparse=True):
@@ -36,6 +37,7 @@ class StructLayer(nn.Module):
         """
         return self.node2vec(node_indices)
 
+
 ###############################################################################
 # 2. Main Model: Improved Structural GNN
 ###############################################################################
@@ -51,18 +53,19 @@ class StructuralGNN(nn.Module):
 
     You can selectively combine these losses during training for better generalization.
     """
+
     def __init__(
-        self,
-        num_nodes,
-        edge_index,           # Global edge_index Node2Vec
-        input_dim,            # Node feature dimension
-        hidden_dim=64,
-        output_dim=32,        # Base embedding dimension after the final layer
-        embedding_dim=128,    # Node2Vec embedding size
-        num_layers=2,
-        use_gat=True,
-        num_classes=None,     # If None, skip classification head
-        feat_reconstruction=False
+            self,
+            num_nodes,
+            edge_index,  # Global edge_index Node2Vec
+            input_dim,  # Node feature dimension
+            hidden_dim=64,
+            output_dim=32,  # Base embedding dimension after the final layer
+            embedding_dim=128,  # Node2Vec embedding size
+            num_layers=2,
+            use_gat=True,
+            num_classes=None,  # If None, skip classification head
+            feat_reconstruction=False
     ):
         super(StructuralGNN, self).__init__()
 

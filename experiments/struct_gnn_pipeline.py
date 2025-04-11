@@ -189,7 +189,6 @@ def evaluate_classification(model, classifier, data, labels, mask, device, verbo
     labels = labels.to(device)
     mask = mask.to(device)
 
-
     node_indices = torch.arange(data.num_nodes, device=device)
 
     with torch.no_grad():
@@ -339,15 +338,15 @@ def finetune_classification(model, classifier, data, labels, train_mask, finetun
 # Fine Tune Link Prediction
 
 def finetune_link_prediction(
-    model,
-    data,
-    rem_edge_list,
-    finetune_epochs: int,
-    neg_sample_size: int = 5,
-    lr: float = 0.01,
-    weight_decay: float = 5e-4,
-    device=None,
-    log_every: int = 10
+        model,
+        data,
+        rem_edge_list,
+        finetune_epochs: int,
+        neg_sample_size: int = 5,
+        lr: float = 0.01,
+        weight_decay: float = 5e-4,
+        device=None,
+        log_every: int = 10
 ):
     """
     Fine-tunes StructuralGNN for link prediction using supervised link supervision.
@@ -396,12 +395,10 @@ def finetune_link_prediction(
     return model
 
 
-
-
 # ------------------------
 # Main Pipeline Function
 # ------------------------
-def run_structural_node2vec_pipeline(
+def run_structg_pipeline(
         data,
         labels,
         hidden_dim: int = 64,

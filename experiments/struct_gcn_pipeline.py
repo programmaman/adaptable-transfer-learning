@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as f
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, \
     average_precision_score, classification_report
 
@@ -10,7 +11,7 @@ from models.structural_gcn import (
     fine_tune_model
 )
 from utils import get_device
-import torch.nn.functional as f
+
 
 def evaluate_model(model, data, labels, device, verbose=True) -> EvaluationResult:
     """
@@ -126,7 +127,7 @@ def evaluate_link_prediction(model, data, num_samples=1000, device='cpu') -> Eva
 def run_structural_gcn_pipeline(data, labels, hidden_dim=64, mid_dim=32, pretrain_epochs=100, finetune_epochs=50):
     device = get_device()
 
-    #Print Device
+    # Print Device
     print(f"Using device: {device}")
 
     # Create train/val/test split

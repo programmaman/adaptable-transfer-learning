@@ -1,8 +1,10 @@
 import torch
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, average_precision_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, \
+    average_precision_score
 
 from experiments.experiment_utils import EvaluationResult
 from models.baselines import SimpleGNN
+
 
 def prepare_data(data, train_ratio=0.6, val_ratio=0.2, seed=None):
     """
@@ -27,13 +29,15 @@ def prepare_data(data, train_ratio=0.6, val_ratio=0.2, seed=None):
     data.test_mask = test_mask
     return data
 
+
 def initialize_models(in_dim, num_classes):
     """
     Creates two SimpleGNN instances: one for regression pretraining, one for classification fine-tuning.
     """
     pretrain_model = SimpleGNN(in_channels=in_dim, out_channels=1)
-    class_model    = SimpleGNN(in_channels=in_dim, out_channels=num_classes)
+    class_model = SimpleGNN(in_channels=in_dim, out_channels=num_classes)
     return pretrain_model, class_model
+
 
 def pretrain(model, data, epochs=100, lr=0.01, weight_decay=5e-4, log_every=10):
     """
@@ -55,6 +59,7 @@ def pretrain(model, data, epochs=100, lr=0.01, weight_decay=5e-4, log_every=10):
             print(f"Epoch {epoch:03d} | Pretrain Loss: {loss.item():.4f}")
     return model
 
+
 def evaluate_pretrain(model, data):
     """
     Evaluates the pretraining model by reporting final regression loss.
@@ -65,6 +70,7 @@ def evaluate_pretrain(model, data):
         loss = torch.nn.functional.mse_loss(out, data.structural_targets)
     print(f"Final Pretrain MSE Loss: {loss.item():.4f}")
     return loss.item()
+
 
 def fine_tune(class_model, pretrain_model, data, labels, epochs=1, lr=0.01, weight_decay=5e-4, log_every=10):
     """
@@ -94,6 +100,7 @@ def fine_tune(class_model, pretrain_model, data, labels, epochs=1, lr=0.01, weig
             print(f"Epoch {epoch:03d} | Fine-tune Loss: {loss.item():.4f} | Val Acc: {metrics.accuracy:.4f}")
     return class_model
 
+
 def evaluate_classification(model, data, labels, mask, verbose=False) -> EvaluationResult:
     """
     Evaluates classification performance on the given mask.
@@ -105,10 +112,10 @@ def evaluate_classification(model, data, labels, mask, verbose=False) -> Evaluat
         preds = out.argmax(dim=1)[mask].cpu()
         trues = labels[mask].cpu()
 
-    accuracy  = accuracy_score(trues, preds)
+    accuracy = accuracy_score(trues, preds)
     precision = precision_score(trues, preds, average='macro', zero_division=0)
-    recall    = recall_score(trues, preds, average='macro', zero_division=0)
-    f1        = f1_score(trues, preds, average='macro', zero_division=0)
+    recall = recall_score(trues, preds, average='macro', zero_division=0)
+    f1 = f1_score(trues, preds, average='macro', zero_division=0)
 
     try:
         auc = roc_auc_score(trues, preds, multi_class='ovr', average='macro')
@@ -168,7 +175,7 @@ def evaluate_link_prediction(model, data, num_samples=1000) -> EvaluationResult:
 
     # Compute metrics
     auc = roc_auc_score(labels, scores)
-    ap  = average_precision_score(labels, scores)
+    ap = average_precision_score(labels, scores)
     acc = accuracy_score(labels, preds)
     precision = precision_score(labels, preds, zero_division=0)
     recall = recall_score(labels, preds, zero_division=0)

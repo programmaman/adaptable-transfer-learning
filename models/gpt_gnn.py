@@ -1,6 +1,7 @@
-from conv import *
 import numpy as np
 from gensim.parsing.preprocessing import *
+
+from conv import *
 
 
 class GPT_GNN(nn.Module):

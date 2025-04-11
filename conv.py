@@ -1,11 +1,12 @@
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv, GATConv
 from torch_geometric.nn.conv import MessagePassing
-from torch_geometric.nn.inits import glorot, uniform
+from torch_geometric.nn.inits import glorot
 from torch_geometric.utils import softmax
-import math
 
 
 class HGTConv(MessagePassing):

@@ -1,7 +1,4 @@
-import json
-
 import networkx as nx
-from sklearn.preprocessing import LabelEncoder
 
 
 def generate_synthetic_graph(num_nodes=1000, num_edges=1500, feature_dim=16):
@@ -22,13 +19,13 @@ def generate_synthetic_graph(num_nodes=1000, num_edges=1500, feature_dim=16):
     clustering = nx.clustering(graph)
 
     data.structural_targets = torch.tensor([clustering[i] for i in range(num_nodes)], dtype=torch.float)
-    
+
     # generate labels
     labels = generate_task_labels(data)
 
     print(f"Loaded graph with {data.num_nodes} nodes, {data.num_edges} edges, {x.size(1)} features")
     print(f"Label coverage: {(labels >= 0).sum().item()} / {len(labels)} nodes labeled")
-    
+
     return data, labels
 
 
@@ -41,7 +38,6 @@ def generate_task_labels(data, num_classes=5):
     kmeans = KMeans(n_clusters=num_classes, random_state=42).fit(x_np)
     labels = torch.tensor(kmeans.labels_, dtype=torch.long)
     return labels
-
 
 
 def load_musae_facebook_dataset(edge_path, features_path, target_path):
@@ -94,11 +90,10 @@ def load_musae_facebook_dataset(edge_path, features_path, target_path):
 
     return data, labels, label_encoder
 
+
 import json
-import pandas as pd
-import torch
-from torch_geometric.data import Data
 from sklearn.preprocessing import LabelEncoder
+
 
 def load_musae_github_dataset(edge_path, features_path, target_path):
     # Load edges
@@ -153,6 +148,7 @@ import torch
 from torch_geometric.data import Data
 import pandas as pd
 
+
 def load_email_eu_core_dataset(edge_path: str, label_path: str):
     # === Load edge list ===
     edge_df = pd.read_csv(edge_path, sep=" ", header=None, names=["src", "dst"])
@@ -178,7 +174,8 @@ def load_email_eu_core_dataset(edge_path: str, label_path: str):
     return data, labels
 
 
-def sample_negative_edges(pos_edges: torch.Tensor, num_nodes: int, num_samples: int = None, existing_edge_set: set = None) -> torch.Tensor:
+def sample_negative_edges(pos_edges: torch.Tensor, num_nodes: int, num_samples: int = None,
+                          existing_edge_set: set = None) -> torch.Tensor:
     """
     Sample negative edges (non-existent links) for link prediction evaluation.
 
@@ -209,6 +206,7 @@ def sample_negative_edges(pos_edges: torch.Tensor, num_nodes: int, num_samples: 
     neg_edges_tensor = torch.tensor(list(neg_edges), dtype=torch.long)
     return neg_edges_tensor
 
+
 def split_edges_for_link_prediction(edge_index: torch.Tensor, removal_ratio: float = 0.1):
     """
     Randomly removes a subset of edges for link prediction.
@@ -226,6 +224,7 @@ def split_edges_for_link_prediction(edge_index: torch.Tensor, removal_ratio: flo
     # Match expected format: {0: [Tensor of shape [num_removed, 2]]}
     rem_edge_list = {0: [removed_edges.t()]}  # [num_edges, 2]
     return remaining_edges, rem_edge_list
+
 
 from dataclasses import dataclass
 from typing import Optional, Any

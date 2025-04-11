@@ -10,7 +10,7 @@ from experiments.gnn_pipeline import run_pipeline
 from experiments.graph_sage_pipeline import run_graphsage_pipeline
 from experiments.struct_gcn_pipeline import run_structural_gcn_pipeline
 from experiments.gpt_gnn_pipeline import run_gpt_gnn_pipeline
-from experiments.struct_gnn_pipeline import run_structural_node2vec_pipeline
+from experiments.struct_gnn_pipeline import run_structg_pipeline
 
 
 def run_synthetic_experiments():
@@ -29,7 +29,7 @@ def run_synthetic_experiments():
     _, gpt_cls_results, gpt_lp_results = run_gpt_gnn_pipeline(data, labels)
 
     print("\n========== [Synthetic] StructuralGNN (Node2Vec) ==========")
-    _, structgnn_classifier, structgnn_cls_results, structgnn_lp_results = run_structural_node2vec_pipeline(data, labels)
+    _, structgnn_classifier, structgnn_cls_results, structgnn_lp_results = run_structg_pipeline(data, labels)
 
     print("\n========== [Synthetic] SimpleGraphSAGE ==========")
     _, graphsage_cls_result = run_graphsage_pipeline(data, labels)
@@ -67,22 +67,22 @@ def run_facebook_experiments(edge_path, features_path, target_path):
     )
 
     print("\n========== [Facebook] SimpleGNN ==========")
-    simplegnn_model, simplegnn_cls_results, simplegnn_lp_results = run_pipeline(data, labels)
+    _, simplegnn_cls_results, simplegnn_lp_results = run_pipeline(data, labels)
 
     print("\n========== [Facebook] StructuralGCN ==========")
-    structural_model, structural_cls_results, structural_lp_results = run_structural_gcn_pipeline(data, labels)
+    _, structural_cls_results, structural_lp_results = run_structural_gcn_pipeline(data, labels)
 
     print("\n========== [Facebook] GPT-GNN ==========")
-    gpt_model, gpt_cls_results, gpt_lp_results = run_gpt_gnn_pipeline(data, labels)
+    _, gpt_cls_results, gpt_lp_results = run_gpt_gnn_pipeline(data, labels)
 
     print("\n========== [Facebook] StructuralGNN (Node2Vec) ==========")
-    structural_model, structural_classifier, structgnn_cls_results, structgnn_lp_results = run_structural_node2vec_pipeline(data, labels)
+    _, _, structgnn_cls_results, structgnn_lp_results = run_structg_pipeline(data, labels)
 
     print("\n========== [Facebook] SimpleGAT ==========")
-    simplegat_model, simplegat_cls_results = run_gat_pipeline(data, labels)
+    _, simplegat_cls_results = run_gat_pipeline(data, labels)
 
     print("\n========== [Facebook] SimpleGraphSAGE ==========")
-    graphsage_model, graphsage_cls_results = run_graphsage_pipeline(data, labels)
+    _, graphsage_cls_results = run_graphsage_pipeline(data, labels)
 
     print("\n=================== Classification Summary ===================")
     print(f"[SimpleGNN]         {simplegnn_cls_results.summary()}")
@@ -115,22 +115,22 @@ def run_email_eu_core_experiments(edge_path, label_path):
     )
 
     print("\n========== [Email-EU-Core] SimpleGNN ==========")
-    simplegnn_model, simplegnn_cls_results, simplegnn_lp_results = run_pipeline(data, labels)
+    _, simplegnn_cls_results, simplegnn_lp_results = run_pipeline(data, labels)
 
     print("\n========== [Email-EU-Core] StructuralGCN ==========")
-    structural_model, structural_cls_results, structural_lp_results = run_structural_gcn_pipeline(data, labels)
+    _, structural_cls_results, structural_lp_results = run_structural_gcn_pipeline(data, labels)
 
     print("\n========== [Email-EU-Core] GPT-GNN ==========")
-    gpt_model, gpt_cls_results, gpt_lp_results = run_gpt_gnn_pipeline(data, labels)
+    _, gpt_cls_results, gpt_lp_results = run_gpt_gnn_pipeline(data, labels)
 
     print("\n========== [Email-EU-Core] StructuralGNN (Node2Vec) ==========")
-    structural_model, structural_classifier, structgnn_cls_results, structgnn_lp_results = run_structural_node2vec_pipeline(data, labels)
+    _, _, structgnn_cls_results, structgnn_lp_results = run_structg_pipeline(data, labels)
 
     print("\n========== [Email-EU-Core] SimpleGAT ==========")
-    simplegat_model, simplegat_cls_results = run_gat_pipeline(data, labels)
+    _, simplegat_cls_results = run_gat_pipeline(data, labels)
 
     print("\n========== [Email-EU-Core] SimpleGraphSAGE ==========")
-    graphsage_model, graphsage_cls_results = run_graphsage_pipeline(data, labels)
+    _, graphsage_cls_results = run_graphsage_pipeline(data, labels)
 
     print("\n=================== Classification Summary ===================")
     print(f"[SimpleGNN]         {simplegnn_cls_results.summary()}")

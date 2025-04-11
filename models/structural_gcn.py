@@ -1,18 +1,21 @@
-import torch
 import logging
+
+import torch
 import torch.nn as nn
+import torch.nn.functional as f
 import torch.optim as optim
 import torch_geometric.nn as pyg_nn
-import torch.nn.functional as f
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 class StructuralGcn(nn.Module):
     """
     Graph Neural Network backbone for predicting structural features.
     This version outputs a single continuous value per node (for regression).
     """
+
     def __init__(self, in_channels: int, hidden_channels: int, mid_channels: int):
         super(StructuralGcn, self).__init__()
         self.conv1 = pyg_nn.GCNConv(in_channels, hidden_channels)
@@ -28,11 +31,13 @@ class StructuralGcn(nn.Module):
         x = self.conv3(x, edge_index)
         return x.squeeze()  # Squeeze to shape [num_nodes]
 
+
 class GnnClassifierHead(nn.Module):
     """
     Classification head that fine-tunes a StructuralGnn backbone.
     It maps the backbone's 1D output to class logits.
     """
+
     def __init__(self, pretrained_model: StructuralGcn, out_channels: int):
         super(GnnClassifierHead, self).__init__()
         self.backbone = pretrained_model
@@ -43,7 +48,6 @@ class GnnClassifierHead(nn.Module):
         features = self.backbone(x, edge_index).unsqueeze(-1)  # Shape: [num_nodes, 1]
         out = self.fc(features)
         return out
-
 
 
 def train_structural_feature_predictor(model, data, epochs=100, lr=0.01, weight_decay=0.01, device=torch.device('cpu')):
@@ -94,6 +98,7 @@ def fine_tune_model(model, data, task_labels, epochs=50, lr=0.01, weight_decay=0
 
     return model
 
+
 def fine_tune_link_prediction(model, data, epochs=50, lr=0.01, weight_decay=0.01, device=torch.device('cpu')):
     """
     Fine-tune the model for link prediction (predicting missing edges).
@@ -137,4 +142,3 @@ def fine_tune_link_prediction(model, data, epochs=50, lr=0.01, weight_decay=0.01
             logger.info(f"Fine-tune Epoch {epoch:03d} | Loss: {loss.item():.4f}")
 
     return model
-

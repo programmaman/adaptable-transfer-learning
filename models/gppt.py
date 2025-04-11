@@ -1,18 +1,19 @@
 import time
-import numpy as np
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import dgl.function as fn
+import warnings
+
 import dgl
-from dgl.nn.pytorch.conv import SAGEConv
+import dgl.function as fn
 import dgl.nn.pytorch as dglnn
+import numpy as np
 import pandas as pd
 import sklearn.linear_model as lm
 import sklearn.metrics as skm
-import utils
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from dgl.nn.pytorch.conv import SAGEConv
 
-import warnings
+import utils
 
 warnings.filterwarnings("ignore")
 
@@ -312,19 +313,3 @@ def main(args):
     acc = utils.evaluate(model, g, test_nid, args.batch_size, device, args.sample_list)
 
     print("Test Accuracy {:.4f}".format(np.mean(acc_all[-10:])))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
