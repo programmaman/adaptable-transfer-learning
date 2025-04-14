@@ -1,8 +1,10 @@
+import time
+
 import torch
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, \
     average_precision_score
 
-from experiments.experiment_utils import EvaluationResult
+from experiments.experiment_utils import EvaluationResult, set_global_seed
 from models.baselines import SimpleGNN
 
 
@@ -248,33 +250,47 @@ def evaluate_link_prediction(model, data, num_samples=1000) -> EvaluationResult:
 
 
 def run_pipeline(data, labels,
-                 pretrain_epochs=100, finetune_epochs=50,
+                 pretrain_epochs=100, finetune_epochs=30,
                  seed=None):
-    """
-    Orchestrates the full GNN workflow using the modular steps.
-    """
-    # 1) Prepare data
-    data = prepare_data(data, seed=seed)
+    from experiments.experiment_utils import set_global_seed
+    import time
 
-    # 2) Initialize models
+    start_time = time.time()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Device: {device} | Seed: {seed}")
+
+    if seed is not None:
+        set_global_seed(seed)
+
+    data = prepare_data(data, seed=seed)
     in_dim = data.x.size(1)
     num_classes = len(labels.unique())
     pre_model, class_model = initialize_models(in_dim, num_classes)
 
-    # 3) Pretrain
     pre_model = pretrain(pre_model, data, epochs=pretrain_epochs)
-    evaluate_pretrain(pre_model, data)
+    pretrain_loss = evaluate_pretrain(pre_model, data)
 
-    # 4) Fine-tune
     class_model = fine_tune(class_model, pre_model, data, labels, epochs=finetune_epochs)
-
-    # 5) Evaluate classification
-    print("\n--- Final Test Classification Metrics ---")
     classification_results = evaluate_classification(class_model, data, labels, data.test_mask)
 
-    # 6) Evaluate link prediction
-    #Finetune link prediction
     class_model = finetune_link_prediction(class_model, data, epochs=finetune_epochs)
-    lp_results = evaluate_link_prediction(class_model, data)
+    link_prediction_results = evaluate_link_prediction(class_model, data)
 
-    return class_model, classification_results, lp_results
+    runtime = time.time() - start_time
+
+    classification_results.metadata.update({
+        "seed": seed,
+        "runtime": runtime,
+        "device": str(device),
+        "model": "SimpleGNN"
+    })
+
+    link_prediction_results.metadata.update({
+        "seed": seed,
+        "runtime": runtime,
+        "device": str(device),
+        "model": "SimpleGNN"
+    })
+
+    return class_model, classification_results, link_prediction_results
+

@@ -276,36 +276,48 @@ def evaluate_link_prediction(model, data, num_samples=1000) -> EvaluationResult:
 # ------------------------
 # 6. Full Pipeline Orchestration
 # ------------------------
-def run_gat_pipeline(data, labels, heads=1, pretrain_epochs=100, finetune_epochs=50, seed=None):
-    """
-    Orchestrates the complete pipeline for a GAT model: data preparation, pretraining,
-    fine-tuning for classification, fine-tuning for link prediction, and evaluation.
-    """
-    # Prepare data and masks on device
-    data, labels, device = prepare_data(data, labels, seed=seed)
+def run_gat_pipeline(data, labels, heads=1, pretrain_epochs=100, finetune_epochs=30, seed=None):
+    from experiments.experiment_utils import set_global_seed
+    import time
 
-    # Define dimensions
+    start_time = time.time()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Device: {device} | Seed: {seed}")
+
+    if seed is not None:
+        set_global_seed(seed)
+
+    data, labels, device = prepare_data(data, labels, seed=seed, device=device)
     in_dim = data.x.size(1)
     num_classes = len(labels.unique())
 
-    # Initialize the models
     pretrain_model, class_model = initialize_models(in_dim, num_classes, heads, device)
 
-    # Pretraining stage
     pretrain_model = pretrain(pretrain_model, data, epochs=pretrain_epochs)
     evaluate_pretrain(pretrain_model, data)
 
-    # Fine-tune for node classification
     class_model = fine_tune(class_model, pretrain_model, data, labels, epochs=finetune_epochs)
-    test_metrics = evaluate_classification(class_model, data, labels, data.test_mask)
+    classification_results = evaluate_classification(class_model, data, labels, data.test_mask)
 
-    # Fine-tune for link prediction
     class_model = finetune_link_prediction(class_model, data, epochs=finetune_epochs)
+    link_prediction_results = evaluate_link_prediction(class_model, data)
 
-    # Final evaluation on test set
-    print("\n--- Final Test Classification Metrics ---")
-    # Link prediction evaluation
-    lp_metrics = evaluate_link_prediction(class_model, data)
+    runtime = time.time() - start_time
 
-    return class_model, test_metrics, lp_metrics
+    classification_results.metadata.update({
+        "seed": seed,
+        "runtime": runtime,
+        "device": str(device),
+        "model": "SimpleGAT"
+    })
+
+    link_prediction_results.metadata.update({
+        "seed": seed,
+        "runtime": runtime,
+        "device": str(device),
+        "model": "SimpleGAT"
+    })
+
+    return class_model, classification_results, link_prediction_results
+
 

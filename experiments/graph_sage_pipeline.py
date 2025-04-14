@@ -199,33 +199,50 @@ def evaluate_link_prediction(model, data, num_samples=1000) -> EvaluationResult:
 
 def run_graphsage_pipeline(data, labels,
                            pretrain_epochs=100,
-                           finetune_epochs=50,
+                           finetune_epochs=30,
                            seed=None):
     """
     Orchestrates the full GraphSAGE workflow using modular steps.
     Returns the trained classification model and test metrics.
     """
-    # 1) Prepare data & masks
-    data, labels, device = prepare_data(data, labels, seed=seed)
+    from experiments.experiment_utils import set_global_seed
+    import time
 
-    # 2) Initialize models
+    start_time = time.time()
+    device = get_device()
+    print(f"Device: {device} | Seed: {seed}")
+
+    if seed is not None:
+        set_global_seed(seed)
+
+    data, labels, device = prepare_data(data, labels, seed=seed)
     in_dim = data.x.size(1)
     num_classes = len(labels.unique())
+
     pre_model, class_model = initialize_models(in_dim, num_classes, device)
 
-    # 3) Pretraining
     pre_model = pretrain(pre_model, data, epochs=pretrain_epochs)
     evaluate_pretrain(pre_model, data)
 
-    # 4) Fine-tuning
     class_model = fine_tune(class_model, pre_model, data, labels, epochs=finetune_epochs)
+    classification_results = evaluate_classification(class_model, data, labels, data.test_mask)
 
-    # 5) Final evaluation on test set
-    print("\n--- Final Test Classification Metrics ---")
-    test_metrics = evaluate_classification(class_model, data, labels, data.test_mask)
-    print(f"\nFinal Test Accuracy: {test_metrics.accuracy:.4f}")
+    lp_results = evaluate_link_prediction(class_model, data)
 
-    # 6) Link prediction evaluation
-    lp_metrics = evaluate_link_prediction(class_model, data)
+    runtime = time.time() - start_time
 
-    return class_model, test_metrics, lp_metrics
+    classification_results.metadata.update({
+        "seed": seed,
+        "runtime": runtime,
+        "device": str(device),
+        "model": "GraphSAGE"
+    })
+    lp_results.metadata.update({
+        "seed": seed,
+        "runtime": runtime,
+        "device": str(device),
+        "model": "GraphSAGE"
+    })
+
+    return class_model, classification_results, lp_results
+

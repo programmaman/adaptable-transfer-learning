@@ -125,13 +125,17 @@ def evaluate_link_prediction(model, data, num_samples=1000, device='cpu') -> Eva
     )
 
 
-def run_structural_gcn_pipeline(data, labels, hidden_dim=64, mid_dim=32, pretrain_epochs=100, finetune_epochs=50):
+def run_structural_gcn_pipeline(data, labels, hidden_dim=64, mid_dim=32, pretrain_epochs=100, finetune_epochs=30, seed=None):
+    from experiments.experiment_utils import set_global_seed
+    import time
+
+    if seed is not None:
+        set_global_seed(seed)
+
+    start_time = time.time()
     device = get_device()
+    print(f"Using device: {device} | Seed: {seed}")
 
-    # Print Device
-    print(f"Using device: {device}")
-
-    # Create train/val/test split
     num_nodes = data.num_nodes
     indices = torch.randperm(num_nodes)
     train_ratio, val_ratio = 0.6, 0.2
@@ -145,12 +149,14 @@ def run_structural_gcn_pipeline(data, labels, hidden_dim=64, mid_dim=32, pretrai
     val_mask[indices[train_cut:val_cut]] = True
     test_mask[indices[val_cut:]] = True
 
-    # === Pretraining Phase ===
+    data.train_mask = train_mask
+    data.val_mask = val_mask
+    data.test_mask = test_mask
+
     in_dim = data.x.size(1)
     pretrain_model = StructuralGcn(in_channels=in_dim, hidden_channels=hidden_dim, mid_channels=mid_dim)
     pretrain_model = train_structural_feature_predictor(pretrain_model, data, epochs=pretrain_epochs, device=device)
 
-    # === Fine-tuning Phase ===
     classifier_model = GnnClassifierHead(pretrained_model=pretrain_model, out_channels=len(labels.unique()))
     classifier_model = fine_tune_model(
         classifier_model,
@@ -160,10 +166,26 @@ def run_structural_gcn_pipeline(data, labels, hidden_dim=64, mid_dim=32, pretrai
         device=device
     )
 
-    # === Evaluation ===
-    results = evaluate_model(classifier_model, data, labels, device=device)
+    classification_results = evaluate_model(classifier_model, data, labels, device=device)
     classifier_model = fine_tune_link_prediction(classifier_model, data, epochs=finetune_epochs, device=device)
     lp_results = evaluate_link_prediction(classifier_model, data, device=device)
-    print(f"\nFinal Evaluation — Acc: {results.accuracy:.4f}")
 
-    return classifier_model, results, lp_results
+    runtime = time.time() - start_time
+    print(f"\nTotal Runtime: {runtime:.2f} seconds")
+
+    classification_results.metadata.update({
+        "seed": seed,
+        "runtime": runtime,
+        "device": str(device),
+        "model": "StructuralGCN"
+    })
+
+    lp_results.metadata.update({
+        "seed": seed,
+        "runtime": runtime,
+        "device": str(device),
+        "model": "StructuralGCN"
+    })
+
+    return classifier_model, classification_results, lp_results
+

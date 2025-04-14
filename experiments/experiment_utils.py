@@ -1,5 +1,16 @@
-import networkx as nx
+import random
 
+import networkx as nx
+import numpy as np
+
+
+def set_global_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 def generate_synthetic_graph(num_nodes=1000, num_edges=1500, feature_dim=16):
     # Generate random node features
@@ -230,6 +241,10 @@ from dataclasses import dataclass
 from typing import Optional, Any
 
 
+from dataclasses import dataclass, field
+from typing import Any, Optional, Dict
+
+
 @dataclass
 class EvaluationResult:
     accuracy: float
@@ -237,8 +252,9 @@ class EvaluationResult:
     recall: float
     f1: float
     auc: Optional[float] = None
-    ap: Optional[float] = None  # Only used in link prediction
-    preds: Optional[Any] = None  # Raw predictions (can be tensor or list)
+    ap: Optional[float] = None
+    preds: Optional[Any] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
     def summary(self) -> str:
         parts = [
@@ -252,3 +268,15 @@ class EvaluationResult:
         if self.ap is not None:
             parts.append(f"AP: {self.ap:.4f}")
         return " | ".join(parts)
+
+    def as_dict(self):
+        return {
+            "accuracy": self.accuracy,
+            "precision": self.precision,
+            "recall": self.recall,
+            "f1": self.f1,
+            "auc": self.auc,
+            "ap": self.ap,
+            **self.metadata
+        }
+

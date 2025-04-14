@@ -407,77 +407,67 @@ def run_structg_pipeline(
         num_layers: int = 2,
         node2vec_pretrain_epochs: int = 100,
         full_pretrain_epochs: int = 100,
-        finetune_epochs: int = 50,
+        finetune_epochs: int = 30,
         do_linkpred: bool = True,
         do_n2v_align: bool = True,
         do_featrec: bool = False,
         seed: int = 42
 ):
-    """
-    Runs the full Structural Node2Vec pipeline.
+    from experiments.experiment_utils import set_global_seed
 
-    Args:
-        data: A PyG data object containing:
-              - data.x          [num_nodes, input_dim]
-              - data.edge_index [2, num_edges]
-        labels: A 1D LongTensor [num_nodes] of class labels.
-        hidden_dim, output_dim, embedding_dim, num_layers: GNN architecture parameters.
-        node2vec_pretrain_epochs: Epochs for pre-training Node2Vec embeddings.
-        full_pretrain_epochs: Epochs for full structural pre-training (self-supervised tasks and classification).
-        finetune_epochs: Epochs for final node classification fine-tuning.
-        do_linkpred, do_n2v_align, do_featrec: Flags for including additional self-supervised tasks.
-        seed: Random seed for reproducibility.
-
-    Returns:
-        Tuple (model, classifier, final_classification_metrics, link_prediction_metrics).
-    """
-    # Set seeds for reproducibility.
-    set_seeds(seed)
-
+    set_global_seed(seed)
     device = get_device()
-    print(f"Using device: {device}")
+    print(f"Using device: {device} | Seed: {seed}")
 
-    # Create train/val/test masks.
     num_nodes = data.num_nodes
     train_mask, val_mask, test_mask = create_masks(num_nodes, device=device)
     data.train_mask = train_mask
     data.val_mask = val_mask
     data.test_mask = test_mask
 
-    # Generate node indices for forward passes.
     data.edge_index, rem_edge_list = split_edges_for_link_prediction(data.edge_index, removal_ratio=0.3)
     node_indices = torch.arange(num_nodes, device=device)
 
-    # Initialize model.
     model = init_structural_gnn(data, hidden_dim, output_dim, embedding_dim, num_layers, do_featrec, device)
+    num_classes = labels.unique().numel()
+    classifier = torch.nn.Linear(output_dim, num_classes).to(device)
 
     start_time = time.time()
 
-    # Phase 1: Pre-train Node2Vec embeddings.
     model = pretrain_node2vec(model, node2vec_pretrain_epochs, batch_size=128, lr=0.01, verbose=True)
 
-    # Phase 2: Full pre-training with self-supervision.
-    # Initialize classifier head (for node classification) externally.
-    num_classes = labels.unique().numel()
-    classifier = torch.nn.Linear(output_dim, num_classes).to(device)
     model, classifier = pretrain_full_model(model, classifier, data, labels, train_mask,
                                             full_pretrain_epochs, do_linkpred, do_n2v_align, do_featrec, device,
                                             log_every=10)
-    # Phase 3: Fine-tune for node classification.
-    model, classifier = finetune_classification(model, classifier, data, labels, train_mask, finetune_epochs, device,
-                                                log_every=10)
 
-    # Evaluate Classifier before link prediction.
+    model, classifier = finetune_classification(model, classifier, data, labels, train_mask,
+                                                finetune_epochs, device, log_every=10)
+
     classifier_results = evaluate_classification(model, classifier, data, labels, test_mask, device, verbose=True)
 
-    # (Optionally) Evaluate link prediction performance.
-    lp_results = None
     if do_linkpred:
         model = finetune_link_prediction(model, data, rem_edge_list, finetune_epochs=25, device=device)
         lp_results = evaluate_link_prediction(model, data, rem_edge_list, device)
+    else:
+        lp_results = None
 
     total_time = time.time() - start_time
     print(f"→ Total Training Time: {total_time:.2f} seconds")
 
-    print("\nFinal Test Evaluation:")
+    classifier_results.metadata.update({
+        "seed": seed,
+        "runtime": total_time,
+        "device": str(device),
+        "model": "StructuralGNN"
+    })
+
+    if lp_results:
+        lp_results.metadata.update({
+            "seed": seed,
+            "runtime": total_time,
+            "device": str(device),
+            "model": "StructuralGNN"
+        })
+
     return model, classifier, classifier_results, lp_results
+

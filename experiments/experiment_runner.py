@@ -51,22 +51,22 @@ def run_synthetic_experiments(num_runs=5):
 
         # Store the classification results
         synthetic_cls_results.extend([
-            {"Experiment": "Synthetic", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_cls.summary()},
-            {"Experiment": "Synthetic", "Run": run, "Pipeline": "StructuralGCN", **sgcn_cls.summary()},
-            {"Experiment": "Synthetic", "Run": run, "Pipeline": "GPT-GNN", **gpt_cls.summary()},
-            {"Experiment": "Synthetic", "Run": run, "Pipeline": "StructuralGNN", **structgnn_cls.summary()},
-            {"Experiment": "Synthetic", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_cls.summary()},
-            {"Experiment": "Synthetic", "Run": run, "Pipeline": "SimpleGAT", **simplegat_cls.summary()},
+            {"Experiment": "Synthetic", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_cls.as_dict()},
+            {"Experiment": "Synthetic", "Run": run, "Pipeline": "StructuralGCN", **sgcn_cls.as_dict()},
+            {"Experiment": "Synthetic", "Run": run, "Pipeline": "GPT-GNN", **gpt_cls.as_dict()},
+            {"Experiment": "Synthetic", "Run": run, "Pipeline": "StructuralGNN", **structgnn_cls.as_dict()},
+            {"Experiment": "Synthetic", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_cls.as_dict()},
+            {"Experiment": "Synthetic", "Run": run, "Pipeline": "SimpleGAT", **simplegat_cls.as_dict()},
         ])
 
         # Store the link prediction results
         synthetic_lp_results.extend([
-            {"Experiment": "Synthetic", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_lp.summary()},
-            {"Experiment": "Synthetic", "Run": run, "Pipeline": "StructuralGCN", **sgcn_lp.summary()},
-            {"Experiment": "Synthetic", "Run": run, "Pipeline": "GPT-GNN", **gpt_lp.summary()},
-            {"Experiment": "Synthetic", "Run": run, "Pipeline": "StructuralGNN", **structgnn_lp.summary()},
-            {"Experiment": "Synthetic", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_lp.summary()},
-            {"Experiment": "Synthetic", "Run": run, "Pipeline": "SimpleGAT", **simplegat_lp.summary()},
+            {"Experiment": "Synthetic", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_lp.as_dict()},
+            {"Experiment": "Synthetic", "Run": run, "Pipeline": "StructuralGCN", **sgcn_lp.as_dict()},
+            {"Experiment": "Synthetic", "Run": run, "Pipeline": "GPT-GNN", **gpt_lp.as_dict()},
+            {"Experiment": "Synthetic", "Run": run, "Pipeline": "StructuralGNN", **structgnn_lp.as_dict()},
+            {"Experiment": "Synthetic", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_lp.as_dict()},
+            {"Experiment": "Synthetic", "Run": run, "Pipeline": "SimpleGAT", **simplegat_lp.as_dict()},
         ])
     return synthetic_cls_results, synthetic_lp_results
 
@@ -100,21 +100,21 @@ def run_facebook_experiments(edge_path, features_path, target_path, num_runs=5):
         _, graphsage_cls, graphsage_lp = run_graphsage_pipeline(data, labels)
 
         facebook_cls_results.extend([
-            {"Experiment": "Facebook", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_cls.summary()},
-            {"Experiment": "Facebook", "Run": run, "Pipeline": "StructuralGCN", **structural_cls.summary()},
-            {"Experiment": "Facebook", "Run": run, "Pipeline": "GPT-GNN", **gpt_cls.summary()},
-            {"Experiment": "Facebook", "Run": run, "Pipeline": "StructuralGNN", **structgnn_cls.summary()},
-            {"Experiment": "Facebook", "Run": run, "Pipeline": "SimpleGAT", **simplegat_cls.summary()},
-            {"Experiment": "Facebook", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_cls.summary()},
+            {"Experiment": "Facebook", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_cls.as_dict()},
+            {"Experiment": "Facebook", "Run": run, "Pipeline": "StructuralGCN", **structural_cls.as_dict()},
+            {"Experiment": "Facebook", "Run": run, "Pipeline": "GPT-GNN", **gpt_cls.as_dict()},
+            {"Experiment": "Facebook", "Run": run, "Pipeline": "StructuralGNN", **structgnn_cls.as_dict()},
+            {"Experiment": "Facebook", "Run": run, "Pipeline": "SimpleGAT", **simplegat_cls.as_dict()},
+            {"Experiment": "Facebook", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_cls.as_dict()},
         ])
 
         facebook_lp_results.extend([
-            {"Experiment": "Facebook", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_lp.summary()},
-            {"Experiment": "Facebook", "Run": run, "Pipeline": "StructuralGCN", **structural_lp.summary()},
-            {"Experiment": "Facebook", "Run": run, "Pipeline": "GPT-GNN", **gpt_lp.summary()},
-            {"Experiment": "Facebook", "Run": run, "Pipeline": "StructuralGNN", **structgnn_lp.summary()},
-            {"Experiment": "Facebook", "Run": run, "Pipeline": "SimpleGAT", **simplegat_lp.summary()},
-            {"Experiment": "Facebook", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_lp.summary()},
+            {"Experiment": "Facebook", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_lp.as_dict()},
+            {"Experiment": "Facebook", "Run": run, "Pipeline": "StructuralGCN", **structural_lp.as_dict()},
+            {"Experiment": "Facebook", "Run": run, "Pipeline": "GPT-GNN", **gpt_lp.as_dict()},
+            {"Experiment": "Facebook", "Run": run, "Pipeline": "StructuralGNN", **structgnn_lp.as_dict()},
+            {"Experiment": "Facebook", "Run": run, "Pipeline": "SimpleGAT", **simplegat_lp.as_dict()},
+            {"Experiment": "Facebook", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_lp.as_dict()},
         ])
 
     return facebook_cls_results, facebook_lp_results
@@ -149,21 +149,21 @@ def run_email_eu_core_experiments(edge_path, label_path, num_runs=5):
         _, graphsage_cls, graphsage_lp = run_graphsage_pipeline(data, labels)
 
         email_cls_results.extend([
-            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_cls.summary()},
-            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "StructuralGCN", **structural_cls.summary()},
-            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "GPT-GNN", **gpt_cls.summary()},
-            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "StructuralGNN", **structgnn_cls.summary()},
-            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "SimpleGAT", **simplegat_cls.summary()},
-            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_cls.summary()},
+            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_cls.as_dict()},
+            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "StructuralGCN", **structural_cls.as_dict()},
+            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "GPT-GNN", **gpt_cls.as_dict()},
+            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "StructuralGNN", **structgnn_cls.as_dict()},
+            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "SimpleGAT", **simplegat_cls.as_dict()},
+            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_cls.as_dict()},
         ])
 
         email_lp_results.extend([
-            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_lp.summary()},
-            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "StructuralGCN", **structural_lp.summary()},
-            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "GPT-GNN", **gpt_lp.summary()},
-            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "StructuralGNN", **structgnn_lp.summary()},
-            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "SimpleGAT", **simplegat_lp.summary()},
-            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_lp.summary()},
+            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_lp.as_dict()},
+            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "StructuralGCN", **structural_lp.as_dict()},
+            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "GPT-GNN", **gpt_lp.as_dict()},
+            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "StructuralGNN", **structgnn_lp.as_dict()},
+            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "SimpleGAT", **simplegat_lp.as_dict()},
+            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_lp.as_dict()},
         ])
 
     return email_cls_results, email_lp_results

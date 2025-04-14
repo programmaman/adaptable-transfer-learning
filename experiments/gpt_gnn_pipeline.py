@@ -373,7 +373,9 @@ def evaluate_gpt_link_prediction(model, data, rem_edge_list, ori_edge_list, devi
 # Pipeline Orchestration
 # ------------------------
 def run_gpt_gnn_pipeline(data, labels, hidden_dim=64, num_layers=2, num_heads=2,
-                         pretrain_epochs=100, finetune_epochs=50):
+                         pretrain_epochs=100, finetune_epochs=30, seed=None):
+    from experiments.experiment_utils import set_global_seed
+    import time
     """
     Orchestrates the full GPT-GNN workflow:
       1. Preprocess the graph data.
@@ -383,60 +385,61 @@ def run_gpt_gnn_pipeline(data, labels, hidden_dim=64, num_layers=2, num_heads=2,
       5. Fine-tune a classifier on node classification.
       6. Evaluate node classification and link prediction performance.
     """
+    start_time = time.time()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Using device: {device}")
+    print(f"Using device: {device} | Seed: {seed}")
 
-    # Preprocess data (adds node_type, edge_type, and edge_time)
+    if seed is not None:
+        set_global_seed(seed)
+
     data = prepare_gpt_data(data)
-
-    # Build train/val/test masks (for node classification fine-tuning later)
     num_nodes = data.num_nodes
     train_mask, val_mask, test_mask = create_masks(num_nodes, device=device)
-    # Attach masks to data for use in evaluation
     data.train_mask = train_mask
     data.val_mask = val_mask
     data.test_mask = test_mask
 
-    # Build GPT-GNN model & supporting structures for link prediction
     model, rem_edge_list, ori_edge_list, node_dict, target_type = build_gpt_gnn_model(
         data, hidden_dim=hidden_dim, num_layers=num_layers, num_heads=num_heads, device=device
     )
 
-    # Pretraining: Link Prediction
-    # (Grab the additional attributes from data)
     node_type = data.node_type
     edge_type = data.edge_type
     edge_time = data.edge_time
+
     model = pretrain_link_prediction(
         model, data, node_type, edge_time, edge_type,
         rem_edge_list, ori_edge_list, node_dict, target_type,
         epochs=pretrain_epochs, lr=0.005, weight_decay=5e-4, log_every=10, device=device
     )
 
-    # Fine-tuning: Node Classification
     classifier, train_mask, val_mask, test_mask = fine_tune_classifier(
         model, data, node_type, edge_time, edge_type,
         labels, hidden_dim, finetune_epochs=finetune_epochs, lr=0.01, weight_decay=5e-4,
         log_every=10, device=device
     )
 
-    # Final Evaluation: Node Classification
-    print("\n=== Final Evaluation on Test Set ===")
     classification_results = evaluate_classifier(classifier, model, data, labels, test_mask, device)
-    print("\n=== Classification Report ===")
-    print(classification_report(labels.to(test_mask.device)[test_mask].cpu(), classification_results.preds.cpu(),
-                                digits=4))
-    print("=== Confusion Matrix ===")
-    print(confusion_matrix(labels.to(test_mask.device)[test_mask].cpu(), classification_results.preds.cpu()))
-    print(f"\nFinal Test Accuracy: {classification_results.accuracy:.4f}")
 
-    # Evaluation: Link Prediction
-    # Fine-tune for link prediction (NEW)
     model = finetune_link_prediction(
         model, data, node_type, edge_time, edge_type,
         rem_edge_list, ori_edge_list, node_dict, target_type,
         finetune_epochs=finetune_epochs, device=device
     )
-    lp_results = evaluate_gpt_link_prediction(model, data, rem_edge_list, ori_edge_list, device)
+    link_prediction_results = evaluate_gpt_link_prediction(model, data, rem_edge_list, ori_edge_list, device)
 
-    return classifier, classification_results, lp_results
+    runtime = time.time() - start_time
+    classification_results.metadata.update({
+        "seed": seed,
+        "runtime": runtime,
+        "device": str(device),
+        "model": "GPT-GNN"
+    })
+    link_prediction_results.metadata.update({
+        "seed": seed,
+        "runtime": runtime,
+        "device": str(device),
+        "model": "GPT-GNN"
+    })
+
+    return classifier, classification_results, link_prediction_results
