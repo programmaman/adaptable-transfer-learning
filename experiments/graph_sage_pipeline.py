@@ -110,6 +110,49 @@ def fine_tune(class_model, pretrain_model, data, labels,
                 f"Epoch {epoch:03d} | Fine-tune Loss: {loss.item():.4f} | Val Acc: {metrics.accuracy:.4f} | Val F1: {metrics.f1:.4f}")
     return class_model
 
+def fine_tune_link_prediction(model, data, epochs=50, lr=0.01, weight_decay=5e-4, num_samples=1000, log_every=10):
+    """
+    Fine-tunes the GraphSAGE model for link prediction using a dot-product-based binary classification loss.
+    """
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    bce_loss = torch.nn.BCEWithLogitsLoss()
+
+    src, dst = data.edge_index
+    n_edges = src.size(0)
+    n = data.num_nodes
+
+    def score(u, v):
+        return (u * v).sum(dim=1)
+
+    print("\n=== Fine-tuning for Link Prediction ===")
+    for epoch in range(1, epochs + 1):
+        model.train()
+        optimizer.zero_grad()
+
+        emb = model(data.x, data.edge_index)
+        idx = torch.randperm(n_edges)[:num_samples]
+
+        pos_u, pos_v = src[idx], dst[idx]
+        neg_u = torch.randint(0, n, (num_samples,), device=data.x.device)
+        neg_v = torch.randint(0, n, (num_samples,), device=data.x.device)
+
+        pos_scores = score(emb[pos_u], emb[pos_v])
+        neg_scores = score(emb[neg_u], emb[neg_v])
+        logits = torch.cat([pos_scores, neg_scores])
+        labels = torch.cat([
+            torch.ones_like(pos_scores),
+            torch.zeros_like(neg_scores)
+        ])
+
+        loss = bce_loss(logits, labels)
+        loss.backward()
+        optimizer.step()
+
+        if epoch % log_every == 0 or epoch == epochs:
+            print(f"Epoch {epoch:03d} | LP Fine-tune Loss: {loss.item():.4f}")
+
+    return model
+
 
 def evaluate_classification(model, data, labels, mask, verbose=True) -> EvaluationResult:
     """
@@ -225,21 +268,27 @@ def run_graphsage_pipeline(data, labels,
     evaluate_pretrain(pre_model, data)
 
     class_model = fine_tune(class_model, pre_model, data, labels, epochs=finetune_epochs)
+
+    classifer_eval_start_time = time.time()
     classification_results = evaluate_classification(class_model, data, labels, data.test_mask)
+    classifier_eval_runtime = time.time() - classifer_eval_start_time
 
+    class_model = fine_tune_link_prediction(class_model, data, epochs=finetune_epochs)
+    lp_eval_start_time = time.time()
     lp_results = evaluate_link_prediction(class_model, data)
+    lp_eval_runtime = time.time() - lp_eval_start_time
 
-    runtime = time.time() - start_time
+    runtime = time.time() - start_time - classifier_eval_runtime - lp_eval_runtime
 
     classification_results.metadata.update({
         "seed": seed,
-        "runtime": runtime,
+        "train_time": runtime,
         "device": str(device),
         "model": "GraphSAGE"
     })
     lp_results.metadata.update({
         "seed": seed,
-        "runtime": runtime,
+        "train_time": runtime,
         "device": str(device),
         "model": "GraphSAGE"
     })

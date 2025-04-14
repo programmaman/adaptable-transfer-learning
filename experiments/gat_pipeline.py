@@ -294,15 +294,21 @@ def run_gat_pipeline(data, labels, heads=1, pretrain_epochs=100, finetune_epochs
     pretrain_model, class_model = initialize_models(in_dim, num_classes, heads, device)
 
     pretrain_model = pretrain(pretrain_model, data, epochs=pretrain_epochs)
-    evaluate_pretrain(pretrain_model, data)
+    # evaluate_pretrain(pretrain_model, data)
 
     class_model = fine_tune(class_model, pretrain_model, data, labels, epochs=finetune_epochs)
+
+    classifier_eval_start_time = time.time()
     classification_results = evaluate_classification(class_model, data, labels, data.test_mask)
+    classifier_eval_time = time.time() - classifier_eval_start_time
 
     class_model = finetune_link_prediction(class_model, data, epochs=finetune_epochs)
-    link_prediction_results = evaluate_link_prediction(class_model, data)
 
-    runtime = time.time() - start_time
+    link_prediction_eval_start_time = time.time()
+    link_prediction_results = evaluate_link_prediction(class_model, data)
+    link_prediction_eval_time = time.time() - link_prediction_eval_start_time
+
+    runtime = time.time() - start_time - classifier_eval_time - link_prediction_eval_time
 
     classification_results.metadata.update({
         "seed": seed,

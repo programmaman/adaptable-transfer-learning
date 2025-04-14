@@ -419,16 +419,21 @@ def run_gpt_gnn_pipeline(data, labels, hidden_dim=64, num_layers=2, num_heads=2,
         log_every=10, device=device
     )
 
+    classifer_eval_start_time = time.time()
     classification_results = evaluate_classifier(classifier, model, data, labels, test_mask, device)
+    classifer_eval_runtime = time.time() - classifer_eval_start_time
 
     model = finetune_link_prediction(
         model, data, node_type, edge_time, edge_type,
         rem_edge_list, ori_edge_list, node_dict, target_type,
         finetune_epochs=finetune_epochs, device=device
     )
-    link_prediction_results = evaluate_gpt_link_prediction(model, data, rem_edge_list, ori_edge_list, device)
 
-    runtime = time.time() - start_time
+    lp_eval_start_time = time.time()
+    link_prediction_results = evaluate_gpt_link_prediction(model, data, rem_edge_list, ori_edge_list, device)
+    lp_eval_runtime = time.time() - lp_eval_start_time
+
+    runtime = time.time() - start_time - classifer_eval_runtime - lp_eval_runtime
     classification_results.metadata.update({
         "seed": seed,
         "runtime": runtime,

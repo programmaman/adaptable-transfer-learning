@@ -166,23 +166,28 @@ def run_structural_gcn_pipeline(data, labels, hidden_dim=64, mid_dim=32, pretrai
         device=device
     )
 
+    classifer_eval_start_time = time.time()
     classification_results = evaluate_model(classifier_model, data, labels, device=device)
-    classifier_model = fine_tune_link_prediction(classifier_model, data, epochs=finetune_epochs, device=device)
-    lp_results = evaluate_link_prediction(classifier_model, data, device=device)
+    classifer_eval_time = time.time() - classifer_eval_start_time
 
-    runtime = time.time() - start_time
+    classifier_model = fine_tune_link_prediction(classifier_model, data, epochs=finetune_epochs, device=device)
+    lp_eval_start_time = time.time()
+    lp_results = evaluate_link_prediction(classifier_model, data, device=device)
+    lp_eval_time = time.time() - lp_eval_start_time
+
+    runtime = time.time() - start_time - classifer_eval_time - lp_eval_time
     print(f"\nTotal Runtime: {runtime:.2f} seconds")
 
     classification_results.metadata.update({
         "seed": seed,
-        "runtime": runtime,
+        "train_time": runtime,
         "device": str(device),
         "model": "StructuralGCN"
     })
 
     lp_results.metadata.update({
         "seed": seed,
-        "runtime": runtime,
+        "train_time": runtime,
         "device": str(device),
         "model": "StructuralGCN"
     })

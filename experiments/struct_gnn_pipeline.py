@@ -443,20 +443,27 @@ def run_structg_pipeline(
     model, classifier = finetune_classification(model, classifier, data, labels, train_mask,
                                                 finetune_epochs, device, log_every=10)
 
+
+    classifier_evaluation_start_time = time.time()
     classifier_results = evaluate_classification(model, classifier, data, labels, test_mask, device, verbose=True)
+    classifier_evaluation_time = time.time() - classifier_evaluation_start_time
 
     if do_linkpred:
         model = finetune_link_prediction(model, data, rem_edge_list, finetune_epochs=25, device=device)
+        finetune_link_prediction()
+
+        lp_evaluation_start_time = time.time()
         lp_results = evaluate_link_prediction(model, data, rem_edge_list, device)
+        lp_evaluation_time = time.time() - lp_evaluation_start_time
     else:
         lp_results = None
 
-    total_time = time.time() - start_time
+    total_time = time.time() - start_time - classifier_evaluation_time - (lp_evaluation_time if lp_results else 0)
     print(f"→ Total Training Time: {total_time:.2f} seconds")
 
     classifier_results.metadata.update({
         "seed": seed,
-        "runtime": total_time,
+        "train_time": total_time,
         "device": str(device),
         "model": "StructuralGNN"
     })
@@ -464,7 +471,7 @@ def run_structg_pipeline(
     if lp_results:
         lp_results.metadata.update({
             "seed": seed,
-            "runtime": total_time,
+            "train_time": total_time,
             "device": str(device),
             "model": "StructuralGNN"
         })

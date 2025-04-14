@@ -268,15 +268,21 @@ def run_pipeline(data, labels,
     pre_model, class_model = initialize_models(in_dim, num_classes)
 
     pre_model = pretrain(pre_model, data, epochs=pretrain_epochs)
-    pretrain_loss = evaluate_pretrain(pre_model, data)
+    # pretrain_loss = evaluate_pretrain(pre_model, data)
 
     class_model = fine_tune(class_model, pre_model, data, labels, epochs=finetune_epochs)
+
+    classifer_eval_start_time = time.time()
     classification_results = evaluate_classification(class_model, data, labels, data.test_mask)
+    classifer_eval_time = time.time() - classifer_eval_start_time
 
     class_model = finetune_link_prediction(class_model, data, epochs=finetune_epochs)
-    link_prediction_results = evaluate_link_prediction(class_model, data)
 
-    runtime = time.time() - start_time
+    lp_eval_start_time = time.time()
+    link_prediction_results = evaluate_link_prediction(class_model, data)
+    lp_eval_time = time.time() - lp_eval_start_time
+
+    runtime = time.time() - start_time - classifer_eval_time - lp_eval_time
 
     classification_results.metadata.update({
         "seed": seed,
