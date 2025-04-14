@@ -450,7 +450,7 @@ def run_structg_pipeline(
 
     if do_linkpred:
         model = finetune_link_prediction(model, data, rem_edge_list, finetune_epochs=25, device=device)
-        finetune_link_prediction()
+        finetune_link_prediction(model, data, rem_edge_list, finetune_epochs, device=device)
 
         lp_evaluation_start_time = time.time()
         lp_results = evaluate_link_prediction(model, data, rem_edge_list, device)
