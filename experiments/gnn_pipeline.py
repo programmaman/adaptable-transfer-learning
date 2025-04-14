@@ -101,6 +101,53 @@ def fine_tune(class_model, pretrain_model, data, labels, epochs=1, lr=0.01, weig
     return class_model
 
 
+def finetune_link_prediction(model, data, epochs=50, lr=0.01, weight_decay=5e-4, num_samples=1000, log_every=10):
+    """
+    Fine-tunes the GNN for link prediction using a simple dot-product loss.
+    """
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+
+    src, dst = data.edge_index
+    num_edges = src.size(0)
+    n = data.num_nodes
+
+    def score(u, v):
+        return (u * v).sum(dim=1)
+
+    bce_loss = torch.nn.BCEWithLogitsLoss()
+
+    print("\n=== Fine-tuning for Link Prediction ===")
+    for epoch in range(1, epochs + 1):
+        model.train()
+        optimizer.zero_grad()
+
+        emb = model(data.x, data.edge_index)
+
+        idx = torch.randperm(num_edges)[:num_samples]
+        pos_u, pos_v = src[idx], dst[idx]
+        neg_u = torch.randint(0, n, (num_samples,))
+        neg_v = torch.randint(0, n, (num_samples,))
+
+        pos_scores = score(emb[pos_u], emb[pos_v])
+        neg_scores = score(emb[neg_u], emb[neg_v])
+
+        logits = torch.cat([pos_scores, neg_scores])
+        labels = torch.cat([
+            torch.ones_like(pos_scores),
+            torch.zeros_like(neg_scores)
+        ])
+
+        loss = bce_loss(logits, labels)
+        loss.backward()
+        optimizer.step()
+
+        if epoch % log_every == 0 or epoch == epochs:
+            print(f"Epoch {epoch:03d} | LP Fine-tune Loss: {loss.item():.4f}")
+
+    return model
+
+
+
 def evaluate_classification(model, data, labels, mask, verbose=False) -> EvaluationResult:
     """
     Evaluates classification performance on the given mask.
@@ -226,6 +273,8 @@ def run_pipeline(data, labels,
     classification_results = evaluate_classification(class_model, data, labels, data.test_mask)
 
     # 6) Evaluate link prediction
+    #Finetune link prediction
+    class_model = finetune_link_prediction(class_model, data, epochs=finetune_epochs)
     lp_results = evaluate_link_prediction(class_model, data)
 
     return class_model, classification_results, lp_results

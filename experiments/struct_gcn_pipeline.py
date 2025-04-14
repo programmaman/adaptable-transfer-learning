@@ -8,7 +8,8 @@ from models.structural_gcn import (
     StructuralGcn,
     GnnClassifierHead,
     train_structural_feature_predictor,
-    fine_tune_model
+    fine_tune_model,
+    fine_tune_link_prediction
 )
 from utils import get_device
 
@@ -161,6 +162,7 @@ def run_structural_gcn_pipeline(data, labels, hidden_dim=64, mid_dim=32, pretrai
 
     # === Evaluation ===
     results = evaluate_model(classifier_model, data, labels, device=device)
+    classifier_model = fine_tune_link_prediction(classifier_model, data, epochs=finetune_epochs, device=device)
     lp_results = evaluate_link_prediction(classifier_model, data, device=device)
     print(f"\nFinal Evaluation — Acc: {results.accuracy:.4f}")
 

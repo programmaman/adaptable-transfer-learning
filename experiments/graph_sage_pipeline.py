@@ -141,6 +141,61 @@ def evaluate_classification(model, data, labels, mask, verbose=True) -> Evaluati
         preds=preds
     )
 
+from sklearn.metrics import roc_auc_score, average_precision_score
+
+def evaluate_link_prediction(model, data, num_samples=1000) -> EvaluationResult:
+    """
+    Evaluates link prediction using dot-product similarity of node embeddings.
+    """
+    model.eval()
+    with torch.no_grad():
+        emb = model(data.x, data.edge_index)
+
+    src, dst = data.edge_index
+    idx = torch.randperm(src.size(0))[:num_samples]
+    pos_u, pos_v = src[idx], dst[idx]
+
+    # Negative samples
+    n = data.num_nodes
+    neg_u = torch.randint(0, n, (num_samples,), device=data.x.device)
+    neg_v = torch.randint(0, n, (num_samples,), device=data.x.device)
+
+    # Scoring function (dot product)
+    def score(u, v):
+        return (u * v).sum(dim=1)
+
+    pos_scores = score(emb[pos_u], emb[pos_v])
+    neg_scores = score(emb[neg_u], emb[neg_v])
+
+    labels = torch.cat([torch.ones_like(pos_scores), torch.zeros_like(neg_scores)]).cpu()
+    scores = torch.cat([pos_scores, neg_scores]).cpu()
+    preds = (scores > 0).float()
+
+    acc = accuracy_score(labels, preds)
+    precision = precision_score(labels, preds, zero_division=0)
+    recall = recall_score(labels, preds, zero_division=0)
+    f1 = f1_score(labels, preds, zero_division=0)
+    auc = roc_auc_score(labels, scores)
+    ap = average_precision_score(labels, scores)
+
+    print("\n--- Link Prediction Metrics ---")
+    print(f"  → Accuracy:       {acc:.4f}")
+    print(f"  → Precision:      {precision:.4f}")
+    print(f"  → Recall:         {recall:.4f}")
+    print(f"  → F1 Score:       {f1:.4f}")
+    print(f"  → ROC-AUC:        {auc:.4f}")
+    print(f"  → Avg Precision:  {ap:.4f}")
+
+    return EvaluationResult(
+        accuracy=acc,
+        precision=precision,
+        recall=recall,
+        f1=f1,
+        auc=auc,
+        ap=ap,
+        preds=preds
+    )
+
 
 def run_graphsage_pipeline(data, labels,
                            pretrain_epochs=100,
@@ -170,4 +225,7 @@ def run_graphsage_pipeline(data, labels,
     test_metrics = evaluate_classification(class_model, data, labels, data.test_mask)
     print(f"\nFinal Test Accuracy: {test_metrics.accuracy:.4f}")
 
-    return class_model, test_metrics
+    # 6) Link prediction evaluation
+    lp_metrics = evaluate_link_prediction(class_model, data)
+
+    return class_model, test_metrics, lp_metrics

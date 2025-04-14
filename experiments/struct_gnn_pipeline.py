@@ -463,6 +463,12 @@ def run_structg_pipeline(
     model, classifier = pretrain_full_model(model, classifier, data, labels, train_mask,
                                             full_pretrain_epochs, do_linkpred, do_n2v_align, do_featrec, device,
                                             log_every=10)
+    # Phase 3: Fine-tune for node classification.
+    model, classifier = finetune_classification(model, classifier, data, labels, train_mask, finetune_epochs, device,
+                                                log_every=10)
+
+    # Evaluate Classifier before link prediction.
+    classifier_results = evaluate_classification(model, classifier, data, labels, test_mask, device, verbose=True)
 
     # (Optionally) Evaluate link prediction performance.
     lp_results = None
@@ -470,15 +476,8 @@ def run_structg_pipeline(
         model = finetune_link_prediction(model, data, rem_edge_list, finetune_epochs=25, device=device)
         lp_results = evaluate_link_prediction(model, data, rem_edge_list, device)
 
-    # Phase 3: Fine-tune for node classification.
-    model, classifier = finetune_classification(model, classifier, data, labels, train_mask, finetune_epochs, device,
-                                                log_every=10)
-
     total_time = time.time() - start_time
     print(f"→ Total Training Time: {total_time:.2f} seconds")
 
-    # Final evaluation on test set.
-    classifier_results = evaluate_classification(model, classifier, data, labels, test_mask, device, verbose=True)
     print("\nFinal Test Evaluation:")
-
     return model, classifier, classifier_results, lp_results

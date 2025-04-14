@@ -197,6 +197,45 @@ def fine_tune_classifier(model, data, node_type, edge_time, edge_type,
 
     return classifier, train_mask, val_mask, test_mask
 
+def finetune_link_prediction(
+    model, data, node_type, edge_time, edge_type,
+    rem_edge_list, ori_edge_list, node_dict, target_type,
+    finetune_epochs=25, lr=0.005, weight_decay=5e-4,
+    device=None, log_every=10
+):
+    """
+    Fine-tunes GPT-GNN for supervised link prediction using the held-out edge list.
+    """
+    if device is None:
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+
+    print("\n=== Fine-tuning GPT-GNN for Link Prediction ===")
+    for epoch in range(finetune_epochs):
+        model.train()
+        optimizer.zero_grad()
+
+        node_emb = model(
+            data.x.to(device),
+            node_type.to(device),
+            edge_time.to(device),
+            data.edge_index.to(device),
+            edge_type.to(device)
+        )
+
+        loss, _ = model.link_loss(
+            node_emb, rem_edge_list, ori_edge_list, node_dict,
+            target_type, use_queue=False, update_queue=False
+        )
+        loss.backward()
+        optimizer.step()
+
+        if epoch % log_every == 0 or epoch == finetune_epochs - 1:
+            print(f"Epoch {epoch:03d} | LP Fine-tune Loss: {loss.item():.4f}")
+
+    return model
+
 
 # ------------------------
 # Evaluation Functions
@@ -392,6 +431,12 @@ def run_gpt_gnn_pipeline(data, labels, hidden_dim=64, num_layers=2, num_heads=2,
     print(f"\nFinal Test Accuracy: {classification_results.accuracy:.4f}")
 
     # Evaluation: Link Prediction
+    # Fine-tune for link prediction (NEW)
+    model = finetune_link_prediction(
+        model, data, node_type, edge_time, edge_type,
+        rem_edge_list, ori_edge_list, node_dict, target_type,
+        finetune_epochs=finetune_epochs, device=device
+    )
     lp_results = evaluate_gpt_link_prediction(model, data, rem_edge_list, ori_edge_list, device)
 
     return classifier, classification_results, lp_results

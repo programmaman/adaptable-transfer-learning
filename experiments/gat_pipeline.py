@@ -128,6 +128,49 @@ def fine_tune(class_model, pretrain_model, data, labels, epochs=100, lr=0.01, we
             print(f"Epoch {epoch:03d} | Fine-tune Loss: {loss.item():.4f} | Val Acc: {metrics.accuracy:.4f}")
     return class_model
 
+def finetune_link_prediction(model, data, epochs=50, lr=0.01, weight_decay=5e-4, num_samples=1000, log_every=10):
+    """
+    Fine-tunes the GAT model for link prediction using a dot-product-based binary classification loss.
+    """
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    bce_loss = torch.nn.BCEWithLogitsLoss()
+
+    src, dst = data.edge_index
+    n_edges = src.size(0)
+    n = data.num_nodes
+
+    def score(u, v):
+        return (u * v).sum(dim=1)
+
+    print("\n=== Fine-tuning for Link Prediction ===")
+    for epoch in range(1, epochs + 1):
+        model.train()
+        optimizer.zero_grad()
+
+        emb = model(data.x, data.edge_index)
+        idx = torch.randperm(n_edges)[:num_samples]
+
+        pos_u, pos_v = src[idx], dst[idx]
+        neg_u = torch.randint(0, n, (num_samples,), device=data.x.device)
+        neg_v = torch.randint(0, n, (num_samples,), device=data.x.device)
+
+        pos_scores = score(emb[pos_u], emb[pos_v])
+        neg_scores = score(emb[neg_u], emb[neg_v])
+        logits = torch.cat([pos_scores, neg_scores])
+        labels = torch.cat([
+            torch.ones_like(pos_scores),
+            torch.zeros_like(neg_scores)
+        ])
+
+        loss = bce_loss(logits, labels)
+        loss.backward()
+        optimizer.step()
+
+        if epoch % log_every == 0 or epoch == epochs:
+            print(f"Epoch {epoch:03d} | LP Fine-tune Loss: {loss.item():.4f}")
+
+    return model
+
 
 # ------------------------
 # 5. Evaluation
@@ -170,6 +213,65 @@ def evaluate_classification(model, data, labels, mask, verbose=False) -> Evaluat
         preds=preds
     )
 
+from sklearn.metrics import average_precision_score
+
+def evaluate_link_prediction(model, data, num_samples=1000) -> EvaluationResult:
+    """
+    Evaluates link prediction performance using dot product of node embeddings.
+    Returns binary classification metrics wrapped in EvaluationResult.
+    """
+    model.eval()
+    with torch.no_grad():
+        emb = model(data.x, data.edge_index)
+
+    src, dst = data.edge_index
+    idx = torch.randperm(src.size(0))[:num_samples]
+
+    pos_u, pos_v = src[idx], dst[idx]
+
+    # Generate negative samples
+    n = data.num_nodes
+    neg_u = torch.randint(0, n, (num_samples,), device=data.x.device)
+    neg_v = torch.randint(0, n, (num_samples,), device=data.x.device)
+
+    # Dot product as similarity score
+    def score(u, v):
+        return (u * v).sum(dim=1)
+
+    pos_scores = score(emb[pos_u], emb[pos_v])
+    neg_scores = score(emb[neg_u], emb[neg_v])
+
+    labels = torch.cat([torch.ones_like(pos_scores), torch.zeros_like(neg_scores)]).cpu()
+    scores = torch.cat([pos_scores, neg_scores]).cpu()
+    preds = (scores > 0).float()
+
+    # Compute metrics
+    acc = accuracy_score(labels, preds)
+    precision = precision_score(labels, preds, zero_division=0)
+    recall = recall_score(labels, preds, zero_division=0)
+    f1 = f1_score(labels, preds, zero_division=0)
+    auc = roc_auc_score(labels, scores)
+    ap = average_precision_score(labels, scores)
+
+    print("\n--- Link Prediction Metrics ---")
+    print(f"  → Accuracy:       {acc:.4f}")
+    print(f"  → Precision:      {precision:.4f}")
+    print(f"  → Recall:         {recall:.4f}")
+    print(f"  → F1 Score:       {f1:.4f}")
+    print(f"  → ROC-AUC:        {auc:.4f}")
+    print(f"  → Avg Precision:  {ap:.4f}")
+
+    return EvaluationResult(
+        accuracy=acc,
+        precision=precision,
+        recall=recall,
+        f1=f1,
+        auc=auc,
+        ap=ap,
+        preds=preds
+    )
+
+
 
 # ------------------------
 # 6. Full Pipeline Orchestration
@@ -177,7 +279,7 @@ def evaluate_classification(model, data, labels, mask, verbose=False) -> Evaluat
 def run_gat_pipeline(data, labels, heads=1, pretrain_epochs=100, finetune_epochs=50, seed=None):
     """
     Orchestrates the complete pipeline for a GAT model: data preparation, pretraining,
-    evaluation of pretraining, fine-tuning for classification, and final evaluation.
+    fine-tuning for classification, fine-tuning for link prediction, and evaluation.
     """
     # Prepare data and masks on device
     data, labels, device = prepare_data(data, labels, seed=seed)
@@ -193,12 +295,17 @@ def run_gat_pipeline(data, labels, heads=1, pretrain_epochs=100, finetune_epochs
     pretrain_model = pretrain(pretrain_model, data, epochs=pretrain_epochs)
     evaluate_pretrain(pretrain_model, data)
 
-    # Fine-tuning stage
+    # Fine-tune for node classification
     class_model = fine_tune(class_model, pretrain_model, data, labels, epochs=finetune_epochs)
+    test_metrics = evaluate_classification(class_model, data, labels, data.test_mask)
+
+    # Fine-tune for link prediction
+    class_model = finetune_link_prediction(class_model, data, epochs=finetune_epochs)
 
     # Final evaluation on test set
     print("\n--- Final Test Classification Metrics ---")
-    test_metrics = evaluate_classification(class_model, data, labels, data.test_mask)
-    print(f"\nFinal Test Accuracy: {test_metrics.accuracy:.4f}")
+    # Link prediction evaluation
+    lp_metrics = evaluate_link_prediction(class_model, data)
 
-    return class_model, test_metrics
+    return class_model, test_metrics, lp_metrics
+
