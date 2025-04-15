@@ -405,8 +405,7 @@ def run_structg_pipeline(
         output_dim: int = 32,
         embedding_dim: int = 128,
         num_layers: int = 2,
-        node2vec_pretrain_epochs: int = 100,
-        full_pretrain_epochs: int = 100,
+        pretrain_epochs: int = 100,
         finetune_epochs: int = 30,
         do_linkpred: bool = True,
         do_n2v_align: bool = True,
@@ -434,10 +433,10 @@ def run_structg_pipeline(
 
     start_time = time.time()
 
-    model = pretrain_node2vec(model, node2vec_pretrain_epochs, batch_size=128, lr=0.01, verbose=True)
+    model = pretrain_node2vec(model, pretrain_epochs, batch_size=128, lr=0.01, verbose=True)
 
     model, classifier = pretrain_full_model(model, classifier, data, labels, train_mask,
-                                            full_pretrain_epochs, do_linkpred, do_n2v_align, do_featrec, device,
+                                            pretrain_epochs, do_linkpred, do_n2v_align, do_featrec, device,
                                             log_every=10)
 
     model, classifier = finetune_classification(model, classifier, data, labels, train_mask,

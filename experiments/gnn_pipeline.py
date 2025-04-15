@@ -286,14 +286,14 @@ def run_pipeline(data, labels,
 
     classification_results.metadata.update({
         "seed": seed,
-        "runtime": runtime,
+        "train_time": runtime,
         "device": str(device),
         "model": "SimpleGNN"
     })
 
     link_prediction_results.metadata.update({
         "seed": seed,
-        "runtime": runtime,
+        "train_time": runtime,
         "device": str(device),
         "model": "SimpleGNN"
     })

@@ -1,4 +1,6 @@
 import os
+import time
+
 import networkx as nx
 import torch
 from torch_geometric.utils import to_networkx
@@ -75,27 +77,27 @@ def run_synthetic_experiments(num_runs=5):
 
         # SimpleGNN
         print("\n========== [Synthetic] SimpleGNN ==========")
-        _, simplegnn_cls, simplegnn_lp = run_pipeline(data, labels)
+        _, simplegnn_cls, simplegnn_lp = run_pipeline(data, labels, seed=42)
 
         # StructuralGCN
         print("\n========== [Synthetic] StructuralGCN ==========")
-        _, sgcn_cls, sgcn_lp = run_structural_gcn_pipeline(data, labels)
+        _, sgcn_cls, sgcn_lp = run_structural_gcn_pipeline(data, labels, seed=42)
 
         # GPT-GNN
         print("\n========== [Synthetic] GPT-GNN ==========")
-        _, gpt_cls, gpt_lp = run_gpt_gnn_pipeline(data, labels)
+        _, gpt_cls, gpt_lp = run_gpt_gnn_pipeline(data, labels, seed=42)
 
         # StructuralGNN (Node2Vec)
         print("\n========== [Synthetic] StructuralGNN (Node2Vec) ==========")
-        _, _, structgnn_cls, structgnn_lp = run_structg_pipeline(data, labels)
+        _, _, structgnn_cls, structgnn_lp = run_structg_pipeline(data, labels, seed=42)
 
         # SimpleGraphSAGE
         print("\n========== [Synthetic] SimpleGraphSAGE ==========")
-        _, graphsage_cls, graphsage_lp = run_graphsage_pipeline(data, labels)
+        _, graphsage_cls, graphsage_lp = run_graphsage_pipeline(data, labels, seed=42)
 
         # SimpleGAT
         print("\n========== [Synthetic] SimpleGAT ==========")
-        _, simplegat_cls, simplegat_lp = run_gat_pipeline(data, labels)
+        _, simplegat_cls, simplegat_lp = run_gat_pipeline(data, labels, seed=42)
 
         # Store the classification results
         synthetic_cls_results.extend([
@@ -122,6 +124,7 @@ def run_synthetic_experiments(num_runs=5):
         # Print LP results
         print_run_results(run, synthetic_lp_results[-6:])
 
+
     return synthetic_cls_results, synthetic_lp_results
 
 
@@ -141,17 +144,17 @@ def run_facebook_experiments(edge_path, features_path, target_path, num_runs=5):
         )
 
         print("\n========== [Facebook] SimpleGNN ==========")
-        _, simplegnn_cls, simplegnn_lp = run_pipeline(data, labels)
+        _, simplegnn_cls, simplegnn_lp = run_pipeline(data, labels, seed=42)
         print("\n========== [Facebook] StructuralGCN ==========")
-        _, structural_cls, structural_lp = run_structural_gcn_pipeline(data, labels)
+        _, structural_cls, structural_lp = run_structural_gcn_pipeline(data, labels, seed=42)
         print("\n========== [Facebook] GPT-GNN ==========")
-        _, gpt_cls, gpt_lp = run_gpt_gnn_pipeline(data, labels)
+        _, gpt_cls, gpt_lp = run_gpt_gnn_pipeline(data, labels, seed=42)
         print("\n========== [Facebook] StructuralGNN (Node2Vec) ==========")
-        _, _, structgnn_cls, structgnn_lp = run_structg_pipeline(data, labels)
+        _, _, structgnn_cls, structgnn_lp = run_structg_pipeline(data, labels, seed=42)
         print("\n========== [Facebook] SimpleGAT ==========")
-        _, simplegat_cls, simplegat_lp = run_gat_pipeline(data, labels)
+        _, simplegat_cls, simplegat_lp = run_gat_pipeline(data, labels, seed=42)
         print("\n========== [Facebook] SimpleGraphSAGE ==========")
-        _, graphsage_cls, graphsage_lp = run_graphsage_pipeline(data, labels)
+        _, graphsage_cls, graphsage_lp = run_graphsage_pipeline(data, labels, seed=42)
 
         facebook_cls_results.extend([
             {"Experiment": "Facebook", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_cls.as_dict()},
@@ -171,7 +174,11 @@ def run_facebook_experiments(edge_path, features_path, target_path, num_runs=5):
             {"Experiment": "Facebook", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_lp.as_dict()},
         ])
 
-
+        #print results
+        print_run_results(run, facebook_cls_results[-6:])
+        print_run_results(run, facebook_lp_results[-6:])
+        #wait to allow GPU to cool down
+        time.sleep(60)
 
 
     return facebook_cls_results, facebook_lp_results
@@ -193,17 +200,17 @@ def run_email_eu_core_experiments(edge_path, label_path, num_runs=5):
         )
 
         print("\n========== [Email-EU-Core] SimpleGNN ==========")
-        _, simplegnn_cls, simplegnn_lp = run_pipeline(data, labels)
+        _, simplegnn_cls, simplegnn_lp = run_pipeline(data, labels, seed=42)
         print("\n========== [Email-EU-Core] StructuralGCN ==========")
-        _, structural_cls, structural_lp = run_structural_gcn_pipeline(data, labels)
+        _, structural_cls, structural_lp = run_structural_gcn_pipeline(data, labels, seed=42)
         print("\n========== [Email-EU-Core] GPT-GNN ==========")
-        _, gpt_cls, gpt_lp = run_gpt_gnn_pipeline(data, labels)
+        _, gpt_cls, gpt_lp = run_gpt_gnn_pipeline(data, labels, seed=42)
         print("\n========== [Email-EU-Core] StructuralGNN (Node2Vec) ==========")
-        _, _, structgnn_cls, structgnn_lp = run_structg_pipeline(data, labels)
+        _, _, structgnn_cls, structgnn_lp = run_structg_pipeline(data, labels, seed=42)
         print("\n========== [Email-EU-Core] SimpleGAT ==========")
-        _, simplegat_cls, simplegat_lp = run_gat_pipeline(data, labels)
+        _, simplegat_cls, simplegat_lp = run_gat_pipeline(data, labels, seed=42)
         print("\n========== [Email-EU-Core] SimpleGraphSAGE ==========")
-        _, graphsage_cls, graphsage_lp = run_graphsage_pipeline(data, labels)
+        _, graphsage_cls, graphsage_lp = run_graphsage_pipeline(data, labels, seed=42)
 
         email_cls_results.extend([
             {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_cls.as_dict()},
@@ -223,23 +230,12 @@ def run_email_eu_core_experiments(edge_path, label_path, num_runs=5):
             {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_lp.as_dict()},
         ])
 
-        # Print formatted link prediction results for the current run (each row per model)
-        print(f"\nRun {run} link prediction results:")
-        # Print a header row:
-        header = "{:<15} {:<10} {:<10} {:<10} {:<10}".format("Pipeline", "Accuracy", "Precision", "Recall", "F1", "AUC",
-                                                             "AP")
-        print(header)
-        # Print each model's results (assuming the keys exist in the dictionary)
-        for result in email_cls_results[-6:]:
-            row = "{:<15} {:<10.4f} {:<10.4f} {:<10.4f} {:<10.4f}".format(
-                result["Pipeline"],
-                result["accuracy"],
-                result["precision"],
-                result["recall"],
-                result["f1"],
-                result["auc"],
-                result["ap"],
-            )
+        # Print results
+        print_run_results(run, email_cls_results[-6:])
+        print_run_results(run, email_lp_results[-6:])
+
+        #wait to allow GPU to cool down
+        time.sleep(60)
 
     return email_cls_results, email_lp_results
 
@@ -260,17 +256,17 @@ def run_github_experiments(edge_path, features_path, target_path, num_runs=5):
         )
 
         print("\n========== [GitHub] SimpleGNN ==========")
-        _, simplegnn_cls, simplegnn_lp = run_pipeline(data, labels)
+        _, simplegnn_cls, simplegnn_lp = run_pipeline(data, labels, seed=42)
         print("\n========== [GitHub] StructuralGCN ==========")
-        _, structural_cls, structural_lp = run_structural_gcn_pipeline(data, labels)
+        _, structural_cls, structural_lp = run_structural_gcn_pipeline(data, labels, seed=42)
         print("\n========== [GitHub] GPT-GNN ==========")
-        _, gpt_cls, gpt_lp = run_gpt_gnn_pipeline(data, labels)
+        _, gpt_cls, gpt_lp = run_gpt_gnn_pipeline(data, labels, seed=42)
         print("\n========== [GitHub] StructuralGNN (Node2Vec) ==========")
-        _, _, structgnn_cls, structgnn_lp = run_structg_pipeline(data, labels)
+        _, _, structgnn_cls, structgnn_lp = run_structg_pipeline(data, labels, seed=42)
         print("\n========== [GitHub] SimpleGAT ==========")
-        _, simplegat_cls, simplegat_lp = run_gat_pipeline(data, labels)
+        _, simplegat_cls, simplegat_lp = run_gat_pipeline(data, labels, seed=42)
         print("\n========== [GitHub] SimpleGraphSAGE ==========")
-        _, graphsage_cls, graphsage_lp = run_graphsage_pipeline(data, labels)
+        _, graphsage_cls, graphsage_lp = run_graphsage_pipeline(data, labels, seed=42)
 
         github_cls_results.extend([
             {"Experiment": "GitHub", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_cls.as_dict()},
@@ -289,6 +285,13 @@ def run_github_experiments(edge_path, features_path, target_path, num_runs=5):
             {"Experiment": "GitHub", "Run": run, "Pipeline": "SimpleGAT", **simplegat_lp.as_dict()},
             {"Experiment": "GitHub", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_lp.as_dict()},
         ])
+
+        # Print results
+        print_run_results(run, github_cls_results[-6:])
+        print_run_results(run, github_lp_results[-6:])
+        #wait to allow GPU to cool down
+        time.sleep(60)
+
     return github_cls_results, github_lp_results
 
 
@@ -296,60 +299,60 @@ def run_github_experiments(edge_path, features_path, target_path, num_runs=5):
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
-def run_all_experiments(num_runs=5, output_file="experiment_results.xlsx"):
+def run_all_experiments(num_runs=5, output_file="/app/results/experiment_results.xlsx"):
     # Run synthetic experiments
     synthetic_cls, synthetic_lp = run_synthetic_experiments(num_runs=num_runs)
 
-    # # Run Facebook experiments
-    # fb_dir = os.path.join(BASE_DIR, "../datasets/facebook_large")
-    # facebook_cls, facebook_lp = run_facebook_experiments(
-    #     edge_path=os.path.join(fb_dir, "musae_facebook_edges.csv"),
-    #     features_path=os.path.join(fb_dir, "musae_facebook_features.json"),
-    #     target_path=os.path.join(fb_dir, "musae_facebook_target.csv"),
-    #     num_runs=num_runs,
-    # )
-    #
-    # # Run Email-EU-Core experiments
-    # email_dir = os.path.join(BASE_DIR, "../datasets/email-eu-core")
-    # email_cls, email_lp = run_email_eu_core_experiments(
-    #     edge_path=os.path.join(email_dir, "email-Eu-core.txt"),
-    #     label_path=os.path.join(email_dir, "email-Eu-core-department-labels.txt"),
-    #     num_runs=num_runs,
-    # )
+    # Run Facebook experiments
+    fb_dir = os.path.join(BASE_DIR, "../datasets/facebook_large")
+    facebook_cls, facebook_lp = run_facebook_experiments(
+        edge_path=os.path.join(fb_dir, "musae_facebook_edges.csv"),
+        features_path=os.path.join(fb_dir, "musae_facebook_features.json"),
+        target_path=os.path.join(fb_dir, "musae_facebook_target.csv"),
+        num_runs=num_runs,
+    )
 
-    # # Run GitHub experiments
-    # github_dir = os.path.join(BASE_DIR, "../datasets/git_web_ml")
-    # github_cls, github_lp = run_github_experiments(
-    #     edge_path=os.path.join(github_dir, "musae_github_edges.csv"),
-    #     features_path=os.path.join(github_dir, "musae_github_features.json"),
-    #     target_path=os.path.join(github_dir, "musae_github_target.csv"),
-    #     num_runs=num_runs,
-    # )
+    # Run Email-EU-Core experiments
+    email_dir = os.path.join(BASE_DIR, "../datasets/email-eu-core")
+    email_cls, email_lp = run_email_eu_core_experiments(
+        edge_path=os.path.join(email_dir, "email-Eu-core.txt"),
+        label_path=os.path.join(email_dir, "email-Eu-core-department-labels.txt"),
+        num_runs=num_runs,
+    )
+
+    # Run GitHub experiments
+    github_dir = os.path.join(BASE_DIR, "../datasets/git_web_ml")
+    github_cls, github_lp = run_github_experiments(
+        edge_path=os.path.join(github_dir, "musae_git_edges.csv"),
+        features_path=os.path.join(github_dir, "musae_git_features.json"),
+        target_path=os.path.join(github_dir, "musae_git_target.csv"),
+        num_runs=num_runs,
+    )
 
     # Convert results lists to DataFrames
     df_synthetic_cls = pd.DataFrame(synthetic_cls)
     df_synthetic_lp = pd.DataFrame(synthetic_lp)
-    # df_facebook_cls = pd.DataFrame(facebook_cls)
-    # df_facebook_lp = pd.DataFrame(facebook_lp)
-    # df_email_cls = pd.DataFrame(email_cls)
-    # df_email_lp = pd.DataFrame(email_lp)
-    # df_github_cls = pd.DataFrame(github_cls)
-    # df_github_lp = pd.DataFrame(github_lp)
+    df_facebook_cls = pd.DataFrame(facebook_cls)
+    df_facebook_lp = pd.DataFrame(facebook_lp)
+    df_email_cls = pd.DataFrame(email_cls)
+    df_email_lp = pd.DataFrame(email_lp)
+    df_github_cls = pd.DataFrame(github_cls)
+    df_github_lp = pd.DataFrame(github_lp)
 
     # Save all results to an Excel file with multiple sheets
     with pd.ExcelWriter(output_file) as writer:
         df_synthetic_cls.to_excel(writer, sheet_name="Synthetic_Classification", index=False)
         df_synthetic_lp.to_excel(writer, sheet_name="Synthetic_LinkPrediction", index=False)
-        # df_facebook_cls.to_excel(writer, sheet_name="Facebook_Classification", index=False)
-        # df_facebook_lp.to_excel(writer, sheet_name="Facebook_LinkPrediction", index=False)
-        # df_email_cls.to_excel(writer, sheet_name="Email_Classification", index=False)
-        # df_email_lp.to_excel(writer, sheet_name="Email_LinkPrediction", index=False)
-        # df_github_cls.to_excel(writer, sheet_name="GitHub_Classification", index=False)
-        # df_github_lp.to_excel(writer, sheet_name="GitHub_LinkPrediction", index=False)
+        df_facebook_cls.to_excel(writer, sheet_name="Facebook_Classification", index=False)
+        df_facebook_lp.to_excel(writer, sheet_name="Facebook_LinkPrediction", index=False)
+        df_email_cls.to_excel(writer, sheet_name="Email_Classification", index=False)
+        df_email_lp.to_excel(writer, sheet_name="Email_LinkPrediction", index=False)
+        df_github_cls.to_excel(writer, sheet_name="GitHub_Classification", index=False)
+        df_github_lp.to_excel(writer, sheet_name="GitHub_LinkPrediction", index=False)
 
     print(f"\nAll experiment results saved to {output_file}")
 
 
 if __name__ == "__main__":
     # Adjust num_runs as needed
-    run_all_experiments(num_runs=1)
+    run_all_experiments(num_runs=5)
