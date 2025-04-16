@@ -74,30 +74,31 @@ def run_synthetic_experiments(num_runs=5):
     for run in range(1, num_runs + 1):
         print(f"\n--- Synthetic Experiment Run {run} ---")
         data, labels = generate_synthetic_graph()
+        seed = 42 + run
 
         # SimpleGNN
         print("\n========== [Synthetic] SimpleGNN ==========")
-        _, simplegnn_cls, simplegnn_lp = run_pipeline(data, labels, seed=42)
+        _, simplegnn_cls, simplegnn_lp = run_pipeline(data, labels, seed=seed)
 
         # StructuralGCN
         print("\n========== [Synthetic] StructuralGCN ==========")
-        _, sgcn_cls, sgcn_lp = run_structural_gcn_pipeline(data, labels, seed=42)
+        _, sgcn_cls, sgcn_lp = run_structural_gcn_pipeline(data, labels, seed=seed)
 
         # GPT-GNN
         print("\n========== [Synthetic] GPT-GNN ==========")
-        _, gpt_cls, gpt_lp = run_gpt_gnn_pipeline(data, labels, seed=42)
+        _, gpt_cls, gpt_lp = run_gpt_gnn_pipeline(data, labels, seed=seed)
 
         # StructuralGNN (Node2Vec)
         print("\n========== [Synthetic] StructuralGNN (Node2Vec) ==========")
-        _, _, structgnn_cls, structgnn_lp = run_structg_pipeline(data, labels, seed=42)
+        _, _, structgnn_cls, structgnn_lp = run_structg_pipeline(data, labels, seed=seed)
 
         # SimpleGraphSAGE
         print("\n========== [Synthetic] SimpleGraphSAGE ==========")
-        _, graphsage_cls, graphsage_lp = run_graphsage_pipeline(data, labels, seed=42)
+        _, graphsage_cls, graphsage_lp = run_graphsage_pipeline(data, labels, seed=seed)
 
         # SimpleGAT
         print("\n========== [Synthetic] SimpleGAT ==========")
-        _, simplegat_cls, simplegat_lp = run_gat_pipeline(data, labels, seed=42)
+        _, simplegat_cls, simplegat_lp = run_gat_pipeline(data, labels, seed=seed)
 
         # Store the classification results
         synthetic_cls_results.extend([
@@ -135,6 +136,7 @@ def run_facebook_experiments(edge_path, features_path, target_path, num_runs=5):
     for run in range(1, num_runs + 1):
         print(f"\n--- Facebook Experiment Run {run} ---")
         data, labels, label_encoder = load_musae_facebook_dataset(edge_path, features_path, target_path)
+        seed = 42 + run
 
         # Compute the clustering for structural targets
         nx_g = to_networkx(data, to_undirected=True)
@@ -144,17 +146,17 @@ def run_facebook_experiments(edge_path, features_path, target_path, num_runs=5):
         )
 
         print("\n========== [Facebook] SimpleGNN ==========")
-        _, simplegnn_cls, simplegnn_lp = run_pipeline(data, labels, seed=42)
+        _, simplegnn_cls, simplegnn_lp = run_pipeline(data, labels, seed=seed)
         print("\n========== [Facebook] StructuralGCN ==========")
-        _, structural_cls, structural_lp = run_structural_gcn_pipeline(data, labels, seed=42)
+        _, structural_cls, structural_lp = run_structural_gcn_pipeline(data, labels, seed=seed)
         print("\n========== [Facebook] GPT-GNN ==========")
-        _, gpt_cls, gpt_lp = run_gpt_gnn_pipeline(data, labels, seed=42)
+        _, gpt_cls, gpt_lp = run_gpt_gnn_pipeline(data, labels, seed=seed)
         print("\n========== [Facebook] StructuralGNN (Node2Vec) ==========")
-        _, _, structgnn_cls, structgnn_lp = run_structg_pipeline(data, labels, seed=42)
+        _, _, structgnn_cls, structgnn_lp = run_structg_pipeline(data, labels, seed=seed)
         print("\n========== [Facebook] SimpleGAT ==========")
-        _, simplegat_cls, simplegat_lp = run_gat_pipeline(data, labels, seed=42)
+        _, simplegat_cls, simplegat_lp = run_gat_pipeline(data, labels, seed=seed)
         print("\n========== [Facebook] SimpleGraphSAGE ==========")
-        _, graphsage_cls, graphsage_lp = run_graphsage_pipeline(data, labels, seed=42)
+        _, graphsage_cls, graphsage_lp = run_graphsage_pipeline(data, labels, seed=seed)
 
         facebook_cls_results.extend([
             {"Experiment": "Facebook", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_cls.as_dict()},
@@ -191,6 +193,7 @@ def run_email_eu_core_experiments(edge_path, label_path, num_runs=5):
     for run in range(1, num_runs + 1):
         print(f"\n--- Email-EU-Core Experiment Run {run} ---")
         data, labels = load_email_eu_core_dataset(edge_path, label_path)
+        seed = 42 + run
 
         # Compute the clustering for structural targets
         nx_g = to_networkx(data, to_undirected=True)
@@ -200,17 +203,17 @@ def run_email_eu_core_experiments(edge_path, label_path, num_runs=5):
         )
 
         print("\n========== [Email-EU-Core] SimpleGNN ==========")
-        _, simplegnn_cls, simplegnn_lp = run_pipeline(data, labels, seed=42)
+        _, simplegnn_cls, simplegnn_lp = run_pipeline(data, labels, seed=seed)
         print("\n========== [Email-EU-Core] StructuralGCN ==========")
-        _, structural_cls, structural_lp = run_structural_gcn_pipeline(data, labels, seed=42)
+        _, structural_cls, structural_lp = run_structural_gcn_pipeline(data, labels, seed=seed)
         print("\n========== [Email-EU-Core] GPT-GNN ==========")
-        _, gpt_cls, gpt_lp = run_gpt_gnn_pipeline(data, labels, seed=42)
+        _, gpt_cls, gpt_lp = run_gpt_gnn_pipeline(data, labels, seed=seed)
         print("\n========== [Email-EU-Core] StructuralGNN (Node2Vec) ==========")
-        _, _, structgnn_cls, structgnn_lp = run_structg_pipeline(data, labels, seed=42)
+        _, _, structgnn_cls, structgnn_lp = run_structg_pipeline(data, labels, seed=seed)
         print("\n========== [Email-EU-Core] SimpleGAT ==========")
-        _, simplegat_cls, simplegat_lp = run_gat_pipeline(data, labels, seed=42)
+        _, simplegat_cls, simplegat_lp = run_gat_pipeline(data, labels, seed=seed)
         print("\n========== [Email-EU-Core] SimpleGraphSAGE ==========")
-        _, graphsage_cls, graphsage_lp = run_graphsage_pipeline(data, labels, seed=42)
+        _, graphsage_cls, graphsage_lp = run_graphsage_pipeline(data, labels, seed=seed)
 
         email_cls_results.extend([
             {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_cls.as_dict()},
@@ -247,6 +250,7 @@ def run_github_experiments(edge_path, features_path, target_path, num_runs=5):
     for run in range(1, num_runs + 1):
         print(f"\n--- GitHub Experiment Run {run} ---")
         data, labels, label_encoder = load_musae_github_dataset(edge_path, features_path, target_path)
+        seed = 42 + run
 
         # Compute the clustering for structural targets
         nx_g = to_networkx(data, to_undirected=True)
@@ -256,17 +260,17 @@ def run_github_experiments(edge_path, features_path, target_path, num_runs=5):
         )
 
         print("\n========== [GitHub] SimpleGNN ==========")
-        _, simplegnn_cls, simplegnn_lp = run_pipeline(data, labels, seed=42)
+        _, simplegnn_cls, simplegnn_lp = run_pipeline(data, labels, seed=seed)
         print("\n========== [GitHub] StructuralGCN ==========")
-        _, structural_cls, structural_lp = run_structural_gcn_pipeline(data, labels, seed=42)
+        _, structural_cls, structural_lp = run_structural_gcn_pipeline(data, labels, seed=seed)
         print("\n========== [GitHub] GPT-GNN ==========")
-        _, gpt_cls, gpt_lp = run_gpt_gnn_pipeline(data, labels, seed=42)
+        _, gpt_cls, gpt_lp = run_gpt_gnn_pipeline(data, labels, seed=seed)
         print("\n========== [GitHub] StructuralGNN (Node2Vec) ==========")
-        _, _, structgnn_cls, structgnn_lp = run_structg_pipeline(data, labels, seed=42)
+        _, _, structgnn_cls, structgnn_lp = run_structg_pipeline(data, labels, seed=seed)
         print("\n========== [GitHub] SimpleGAT ==========")
-        _, simplegat_cls, simplegat_lp = run_gat_pipeline(data, labels, seed=42)
+        _, simplegat_cls, simplegat_lp = run_gat_pipeline(data, labels, seed=seed)
         print("\n========== [GitHub] SimpleGraphSAGE ==========")
-        _, graphsage_cls, graphsage_lp = run_graphsage_pipeline(data, labels, seed=42)
+        _, graphsage_cls, graphsage_lp = run_graphsage_pipeline(data, labels, seed=seed)
 
         github_cls_results.extend([
             {"Experiment": "GitHub", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_cls.as_dict()},
