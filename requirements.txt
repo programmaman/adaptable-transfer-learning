@@ -10,3 +10,4 @@ scikit-learn
 dgl
 pandas
 openpyxl
+seaborn
