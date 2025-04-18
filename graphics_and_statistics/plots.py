@@ -6,7 +6,7 @@ import numpy as np
 import os
 
 # --- Style ---
-sns.set(style="whitegrid", font_scale=1.3)
+sns.set_theme(style="whitegrid", font_scale=1.3)
 plt.rcParams.update({
     "axes.titlesize": 18,
     "axes.labelsize": 16,
@@ -35,12 +35,10 @@ def plot_metric_bar(metric="accuracy_mean", save=False, dpi=600):
         .index
     )
 
-    num_models = len(model_order)
-    width_per_model = 1
-    fig_width = max(16, width_per_model * num_models * 3)
+    fig_width = 16
     fig_height = 9
 
-    fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+    _, ax = plt.subplots(figsize=(fig_width, fig_height))
 
     plot_data = df.copy()
     plot_data["model"] = pd.Categorical(plot_data["model"], categories=model_order, ordered=True)
@@ -48,6 +46,7 @@ def plot_metric_bar(metric="accuracy_mean", save=False, dpi=600):
 
     bar_width = 0.8 / len(datasets)
     x_ticks = np.arange(len(model_order))
+
 
     for i, dataset in enumerate(datasets):
         dataset_df = plot_data[plot_data['dataset'] == dataset]
@@ -80,11 +79,14 @@ def plot_metric_bar(metric="accuracy_mean", save=False, dpi=600):
                 zorder=2,
             ))
 
+    padding = bar_width * len(datasets) / 2
+    ax.set_xlim(-padding, len(model_order) - 1 + padding)
     ax.set_xticks(x_ticks)
     ax.set_xticklabels(model_order, rotation=30, ha="right", fontsize=13, weight="medium")
+    ax.set_xlim(-padding, len(model_order) - 1 + padding)
     ax.set_ylabel(metric.replace("_mean", "").capitalize(), fontsize=16, weight="bold", labelpad=10)
     ax.set_xlabel("Model", fontsize=16, weight="bold", labelpad=10)
-    ax.set_title(f"{metric.replace('_mean', '').capitalize()} by Model and Dataset", fontsize=22, weight="bold", pad=30)
+    ax.set_title(f"{metric.replace('_mean', '').capitalize()} by Model & Dataset", fontsize=22, weight="bold", pad=30)
     ax.set_ylim(0, plot_data[metric].max() * 1.2)
 
     # Legend

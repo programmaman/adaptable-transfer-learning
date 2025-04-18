@@ -24,6 +24,8 @@ for sheet in sheet_names:
     if 'pipeline' in df.columns and 'model' not in df.columns:
         df.rename(columns={'pipeline': 'model'}, inplace=True)
 
+
+
     # Verify required columns exist
     if 'model' not in df.columns:
         print(f"[Warning] Skipping sheet '{sheet}': missing 'model' or 'pipeline' column.")
@@ -47,6 +49,11 @@ for sheet in sheet_names:
 
         # Add dataset name as a column
         summary.insert(0, 'dataset', sheet)
+
+        # Replace "_" with " " in 'dataset' row
+        summary['dataset'] = summary['dataset'].str.replace("_", " ")
+        #Space LinkPrediction to Link Prediction
+        summary['dataset'] = summary['dataset'].str.replace("LinkPrediction", "Link Prediction")
 
         all_summaries.append(summary)
 
