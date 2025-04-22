@@ -11,3 +11,4 @@ dgl
 pandas
 openpyxl
 seaborn
+matplotlib

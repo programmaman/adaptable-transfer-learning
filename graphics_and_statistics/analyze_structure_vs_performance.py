@@ -3,12 +3,19 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import os
 
-# --- Load & Merge ---
 graph_stats = pd.read_csv("graph_structure_stats.csv")
 gnn_results = pd.read_csv("gnn_summary_statistics.csv")
 
+# Debug: Check for missing or invalid data
+print("Graph Stats Columns:", graph_stats.columns)
+print("GNN Results Columns:", gnn_results.columns)
+print("Graph Stats Datasets:", graph_stats["dataset"].unique())
+print("GNN Results Datasets:", gnn_results["dataset"].unique())
+print("First row of Graph Stats:", graph_stats.iloc[0])
+print("First row of GNN Results:", gnn_results.iloc[0])
+
 # Normalize dataset names for merge
-gnn_results["base_dataset"] = gnn_results["dataset"].apply(lambda x: x.split("_")[0])
+gnn_results["base_dataset"] = gnn_results["dataset"].apply(lambda x: x.split(" ")[0])
 
 # Merge the data
 merged = pd.merge(
@@ -19,9 +26,16 @@ merged = pd.merge(
     suffixes=("_metric", "_graph")
 ).drop(columns=["dataset_graph"])
 
+# Drop columns that are completely NaN
+cleaned_merged = merged.dropna(axis=1, how='all')
+
+# Optional: check NaNs
+print("Columns with NaNs:\n", merged.isna().sum()[merged.isna().sum() > 0])
+
 # --- Save Merged Data ---
-merged.to_csv("merged_performance_and_graph_stats.csv", index=False)
+cleaned_merged.to_csv("merged_performance_and_graph_stats.csv", index=False)
 print("✅ Merged dataset saved to 'merged_performance_and_graph_stats.csv'")
+
 
 
 # --- Correlation Heatmap ---
