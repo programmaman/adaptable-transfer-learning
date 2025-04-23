@@ -1,7 +1,7 @@
 import torch
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 
-from experiments.experiment_utils import EvaluationResult
+from experiments.experiment_utils import EvaluationResult, sample_negative_edges, split_edges_for_link_prediction
 from models.baselines import SimpleGAT
 
 
@@ -128,39 +128,32 @@ def fine_tune(class_model, pretrain_model, data, labels, epochs=100, lr=0.01, we
             print(f"Epoch {epoch:03d} | Fine-tune Loss: {loss.item():.4f} | Val Acc: {metrics.accuracy:.4f}")
     return class_model
 
-def finetune_link_prediction(model, data, epochs=50, lr=0.01, weight_decay=5e-4, num_samples=1000, log_every=10):
+def finetune_link_prediction(model, data, rem_edge_list, epochs=50, lr=0.01, weight_decay=5e-4, log_every=10):
     """
-    Fine-tunes the GAT model for link prediction using a dot-product-based binary classification loss.
+    Fine-tunes GAT for link prediction using held-out edges only.
     """
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     bce_loss = torch.nn.BCEWithLogitsLoss()
 
-    src, dst = data.edge_index
-    n_edges = src.size(0)
+    pos_edges = rem_edge_list[0][0]
     n = data.num_nodes
 
     def score(u, v):
         return (u * v).sum(dim=1)
 
-    print("\n=== Fine-tuning for Link Prediction ===")
+    print("\n=== Fine-tuning GAT for Link Prediction (Fair) ===")
     for epoch in range(1, epochs + 1):
         model.train()
         optimizer.zero_grad()
-
         emb = model(data.x, data.edge_index)
-        idx = torch.randperm(n_edges)[:num_samples]
 
-        pos_u, pos_v = src[idx], dst[idx]
-        neg_u = torch.randint(0, n, (num_samples,), device=data.x.device)
-        neg_v = torch.randint(0, n, (num_samples,), device=data.x.device)
+        neg_edges = sample_negative_edges(pos_edges, n).to(data.x.device)
 
-        pos_scores = score(emb[pos_u], emb[pos_v])
-        neg_scores = score(emb[neg_u], emb[neg_v])
+        pos_scores = score(emb[pos_edges[:, 0]], emb[pos_edges[:, 1]])
+        neg_scores = score(emb[neg_edges[:, 0]], emb[neg_edges[:, 1]])
+
         logits = torch.cat([pos_scores, neg_scores])
-        labels = torch.cat([
-            torch.ones_like(pos_scores),
-            torch.zeros_like(neg_scores)
-        ])
+        labels = torch.cat([torch.ones_like(pos_scores), torch.zeros_like(neg_scores)])
 
         loss = bce_loss(logits, labels)
         loss.backward()
@@ -168,8 +161,8 @@ def finetune_link_prediction(model, data, epochs=50, lr=0.01, weight_decay=5e-4,
 
         if epoch % log_every == 0 or epoch == epochs:
             print(f"Epoch {epoch:03d} | LP Fine-tune Loss: {loss.item():.4f}")
-
     return model
+
 
 
 # ------------------------
@@ -215,45 +208,36 @@ def evaluate_classification(model, data, labels, mask, verbose=False) -> Evaluat
 
 from sklearn.metrics import average_precision_score
 
-def evaluate_link_prediction(model, data, num_samples=1000) -> EvaluationResult:
+def evaluate_link_prediction(model, data, rem_edge_list) -> EvaluationResult:
     """
-    Evaluates link prediction performance using dot product of node embeddings.
-    Returns binary classification metrics wrapped in EvaluationResult.
+    Evaluates on held-out edges using dot product.
     """
     model.eval()
     with torch.no_grad():
         emb = model(data.x, data.edge_index)
 
-    src, dst = data.edge_index
-    idx = torch.randperm(src.size(0))[:num_samples]
-
-    pos_u, pos_v = src[idx], dst[idx]
-
-    # Generate negative samples
+    pos_edges = rem_edge_list[0][0]
     n = data.num_nodes
-    neg_u = torch.randint(0, n, (num_samples,), device=data.x.device)
-    neg_v = torch.randint(0, n, (num_samples,), device=data.x.device)
+    neg_edges = sample_negative_edges(pos_edges, n).to(data.x.device)
 
-    # Dot product as similarity score
     def score(u, v):
         return (u * v).sum(dim=1)
 
-    pos_scores = score(emb[pos_u], emb[pos_v])
-    neg_scores = score(emb[neg_u], emb[neg_v])
+    pos_scores = score(emb[pos_edges[:, 0]], emb[pos_edges[:, 1]])
+    neg_scores = score(emb[neg_edges[:, 0]], emb[neg_edges[:, 1]])
 
-    labels = torch.cat([torch.ones_like(pos_scores), torch.zeros_like(neg_scores)]).cpu()
     scores = torch.cat([pos_scores, neg_scores]).cpu()
+    labels = torch.cat([torch.ones_like(pos_scores), torch.zeros_like(neg_scores)]).cpu()
     preds = (scores > 0).float()
 
-    # Compute metrics
+    auc = roc_auc_score(labels, scores)
+    ap = average_precision_score(labels, scores)
     acc = accuracy_score(labels, preds)
     precision = precision_score(labels, preds, zero_division=0)
     recall = recall_score(labels, preds, zero_division=0)
     f1 = f1_score(labels, preds, zero_division=0)
-    auc = roc_auc_score(labels, scores)
-    ap = average_precision_score(labels, scores)
 
-    print("\n--- Link Prediction Metrics ---")
+    print(f"\n=== GAT Link Prediction (Fair) ===")
     print(f"  → Accuracy:       {acc:.4f}")
     print(f"  → Precision:      {precision:.4f}")
     print(f"  → Recall:         {recall:.4f}")
@@ -262,14 +246,10 @@ def evaluate_link_prediction(model, data, num_samples=1000) -> EvaluationResult:
     print(f"  → Avg Precision:  {ap:.4f}")
 
     return EvaluationResult(
-        accuracy=acc,
-        precision=precision,
-        recall=recall,
-        f1=f1,
-        auc=auc,
-        ap=ap,
-        preds=preds
+        accuracy=acc, precision=precision, recall=recall,
+        f1=f1, auc=auc, ap=ap, preds=preds
     )
+
 
 
 
@@ -302,10 +282,13 @@ def run_gat_pipeline(data, labels, heads=1, pretrain_epochs=100, finetune_epochs
     classification_results = evaluate_classification(class_model, data, labels, data.test_mask)
     classifier_eval_time = time.time() - classifier_eval_start_time
 
-    class_model = finetune_link_prediction(class_model, data, epochs=finetune_epochs)
+    original_edges = data.edge_index
+    data.edge_index, rem_edge_list = split_edges_for_link_prediction(original_edges)
+    class_model = finetune_link_prediction(class_model, data, rem_edge_list, epochs=finetune_epochs)
+
 
     link_prediction_eval_start_time = time.time()
-    link_prediction_results = evaluate_link_prediction(class_model, data)
+    link_prediction_results = evaluate_link_prediction(class_model, data, rem_edge_list)
     link_prediction_eval_time = time.time() - link_prediction_eval_start_time
 
     runtime = time.time() - start_time - classifier_eval_time - link_prediction_eval_time

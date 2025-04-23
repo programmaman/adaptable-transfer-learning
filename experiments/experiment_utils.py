@@ -53,7 +53,7 @@ def generate_task_labels(data, num_classes=5):
 def load_deezer_europe_dataset(edge_path, features_path, target_path):
     # --- Load edges ---
     edges_df = pd.read_csv(edge_path)
-    edge_index = torch.tensor(edges_df.values.T, dtype=torch.long)
+    edge_index = torch.tensor(edges_df[['node_1', 'node_2']].values.T, dtype=torch.long)
 
     # --- Load features ---
     with open(features_path, 'r') as f:
@@ -69,15 +69,13 @@ def load_deezer_europe_dataset(edge_path, features_path, target_path):
         mapped_id = node_id_map[int(raw_id)]
         x[mapped_id, feats] = 1.0
 
-    # --- Load binary labels ---
+    # --- Load labels ---
     target_df = pd.read_csv(target_path)
     target_df = target_df[target_df['id'].isin(node_ids)]
     target_df['mapped_id'] = target_df['id'].map(node_id_map)
 
-    label_encoder = LabelEncoder()
     labels = torch.full((num_nodes,), -1, dtype=torch.long)
-    encoded_labels = label_encoder.fit_transform(target_df['gender'])  # gender: 0/1
-    labels[target_df['mapped_id']] = torch.tensor(encoded_labels, dtype=torch.long)
+    labels[target_df['mapped_id']] = torch.tensor(target_df['target'].values, dtype=torch.long)
 
     # --- Filter valid edges ---
     edge_list = edge_index.t().tolist()
@@ -93,32 +91,45 @@ def load_deezer_europe_dataset(edge_path, features_path, target_path):
     print(f"Loaded Deezer Europe: {data.num_nodes} nodes, {data.num_edges} edges, {x.size(1)} features")
     print(f"Label coverage: {(labels >= 0).sum().item()} / {len(labels)}")
 
-    return data, labels, label_encoder
+    return data, labels
+
 
 def load_twitch_gamers_dataset(edge_path: str, target_path: str, use_metadata_as_features=True):
-    # Load edge list
-    edge_df = pd.read_csv(edge_path)
-    edge_index = torch.tensor(edge_df.values.T, dtype=torch.long)
-
-    # Load target metadata (includes mature, views, etc.)
+    # Load metadata
     meta_df = pd.read_csv(target_path)
-    node_ids = meta_df["numeric_id"].tolist()
-    num_nodes = max(node_ids) + 1
+    node_ids = sorted(meta_df["numeric_id"].unique())
+    node_id_map = {raw_id: i for i, raw_id in enumerate(node_ids)}  # raw → internal
 
-    # Initialize labels
-    labels = torch.full((num_nodes,), -1, dtype=torch.long)
-    labels[meta_df["numeric_id"].values] = torch.tensor(meta_df["mature"].values, dtype=torch.long)
+    num_nodes = len(node_ids)
 
+    # --- Initialize features ---
     if use_metadata_as_features:
-        # Choose which metadata fields to use as features
         feature_cols = ["views", "life_time", "affiliate"]
-        feature_tensor = torch.zeros((num_nodes, len(feature_cols)))
-        feature_tensor[meta_df["numeric_id"].values] = torch.tensor(meta_df[feature_cols].values, dtype=torch.float)
-        x = feature_tensor
+        x = torch.zeros((num_nodes, len(feature_cols)))
+        for _, row in meta_df.iterrows():
+            idx = node_id_map[row["numeric_id"]]
+            x[idx] = torch.tensor([row[col] for col in feature_cols], dtype=torch.float)
     else:
-        x = torch.eye(num_nodes)  # fallback: identity features
+        x = torch.eye(num_nodes)
 
-    # Build PyG data object
+    # --- Initialize labels ---
+    labels = torch.full((num_nodes,), -1, dtype=torch.long)
+    for _, row in meta_df.iterrows():
+        idx = node_id_map[row["numeric_id"]]
+        labels[idx] = int(row["mature"])
+
+    # --- Load and remap edges ---
+    edge_df = pd.read_csv(edge_path)
+    raw_edges = edge_df[["numeric_id_1", "numeric_id_2"]].values.tolist()
+
+    filtered_edges = [
+        [node_id_map[u], node_id_map[v]]
+        for u, v in raw_edges
+        if u in node_id_map and v in node_id_map
+    ]
+    edge_index = torch.tensor(filtered_edges, dtype=torch.long).t().contiguous()
+
+    # --- Create PyG Data object ---
     data = Data(x=x, edge_index=edge_index)
 
     print(f"Loaded Twitch Gamers graph with {data.num_nodes} nodes, {data.num_edges} edges, {x.size(1)} features")

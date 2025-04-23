@@ -1,5 +1,4 @@
-import time
-
+from experiments.experiment_utils import split_edges_for_link_prediction, sample_negative_edges
 import torch
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, \
     average_precision_score
@@ -103,14 +102,13 @@ def fine_tune(class_model, pretrain_model, data, labels, epochs=1, lr=0.01, weig
     return class_model
 
 
-def finetune_link_prediction(model, data, epochs=50, lr=0.01, weight_decay=5e-4, num_samples=1000, log_every=10):
+def finetune_link_prediction(model, data, rem_edge_list, epochs=50, lr=0.01, weight_decay=5e-4, log_every=10):
     """
-    Fine-tunes the GNN for link prediction using a simple dot-product loss.
+    Fine-tunes GNN for link prediction using *only* held-out (removed) edges.
     """
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
-    src, dst = data.edge_index
-    num_edges = src.size(0)
+    pos_edges = rem_edge_list[0][0]
     n = data.num_nodes
 
     def score(u, v):
@@ -118,20 +116,17 @@ def finetune_link_prediction(model, data, epochs=50, lr=0.01, weight_decay=5e-4,
 
     bce_loss = torch.nn.BCEWithLogitsLoss()
 
-    print("\n=== Fine-tuning for Link Prediction ===")
+    print("\n=== Fine-tuning GNN for Link Prediction ===")
     for epoch in range(1, epochs + 1):
         model.train()
         optimizer.zero_grad()
-
         emb = model(data.x, data.edge_index)
 
-        idx = torch.randperm(num_edges)[:num_samples]
-        pos_u, pos_v = src[idx], dst[idx]
-        neg_u = torch.randint(0, n, (num_samples,))
-        neg_v = torch.randint(0, n, (num_samples,))
+        # Sample negatives
+        neg_edges = sample_negative_edges(pos_edges, n).to(data.x.device)
 
-        pos_scores = score(emb[pos_u], emb[pos_v])
-        neg_scores = score(emb[neg_u], emb[neg_v])
+        pos_scores = score(emb[pos_edges[:, 0]], emb[pos_edges[:, 1]])
+        neg_scores = score(emb[neg_edges[:, 0]], emb[neg_edges[:, 1]])
 
         logits = torch.cat([pos_scores, neg_scores])
         labels = torch.cat([
@@ -147,6 +142,7 @@ def finetune_link_prediction(model, data, epochs=50, lr=0.01, weight_decay=5e-4,
             print(f"Epoch {epoch:03d} | LP Fine-tune Loss: {loss.item():.4f}")
 
     return model
+
 
 
 
@@ -189,40 +185,32 @@ def evaluate_classification(model, data, labels, mask, verbose=False) -> Evaluat
     )
 
 
-def evaluate_link_prediction(model, data, num_samples=1000) -> EvaluationResult:
+def evaluate_link_prediction(model, data, rem_edge_list) -> EvaluationResult:
     """
-    Evaluates link prediction by sampling positive and negative edges.
-    Returns an EvaluationResult with binary classification metrics.
+    Evaluates on the held-out edge list using dot product link prediction.
     """
     model.eval()
     with torch.no_grad():
         emb = model(data.x, data.edge_index)
 
-    src, dst = data.edge_index
-    # Positive samples
-    idx = torch.randperm(src.size(0))[:num_samples]
-    pos_u, pos_v = src[idx], dst[idx]
-
-    # Negative samples
+    pos_edges = rem_edge_list[0][0]
     n = data.num_nodes
-    neg_u = torch.randint(0, n, (num_samples,))
-    neg_v = torch.randint(0, n, (num_samples,))
+
+    neg_edges = sample_negative_edges(pos_edges, n).to(data.x.device)
 
     def score(u, v):
         return (u * v).sum(dim=1)
 
-    pos_scores = score(emb[pos_u], emb[pos_v])
-    neg_scores = score(emb[neg_u], emb[neg_v])
+    pos_scores = score(emb[pos_edges[:, 0]], emb[pos_edges[:, 1]])
+    neg_scores = score(emb[neg_edges[:, 0]], emb[neg_edges[:, 1]])
 
-    # Ground truth labels and scores
+    scores = torch.cat([pos_scores, neg_scores]).cpu()
     labels = torch.cat([
         torch.ones_like(pos_scores),
         torch.zeros_like(neg_scores)
     ]).cpu()
-    scores = torch.cat([pos_scores, neg_scores]).cpu()
-    preds = (scores > 0).float()  # Threshold at 0
 
-    # Compute metrics
+    preds = (scores > 0).float()
     auc = roc_auc_score(labels, scores)
     ap = average_precision_score(labels, scores)
     acc = accuracy_score(labels, preds)
@@ -230,7 +218,7 @@ def evaluate_link_prediction(model, data, num_samples=1000) -> EvaluationResult:
     recall = recall_score(labels, preds, zero_division=0)
     f1 = f1_score(labels, preds, zero_division=0)
 
-    print(f"\n=== Link Prediction ===")
+    print(f"\n=== GNN Link Prediction (Fair Evaluation) ===")
     print(f"  → Accuracy:       {acc:.4f}")
     print(f"  → Precision:      {precision:.4f}")
     print(f"  → Recall:         {recall:.4f}")
@@ -268,7 +256,7 @@ def run_pipeline(data, labels,
     pre_model, class_model = initialize_models(in_dim, num_classes)
 
     pre_model = pretrain(pre_model, data, epochs=pretrain_epochs)
-    # pretrain_loss = evaluate_pretrain(pre_model, data)
+    evaluate_pretrain(pre_model, data)
 
     class_model = fine_tune(class_model, pre_model, data, labels, epochs=finetune_epochs)
 
@@ -276,10 +264,14 @@ def run_pipeline(data, labels,
     classification_results = evaluate_classification(class_model, data, labels, data.test_mask)
     classifer_eval_time = time.time() - classifer_eval_start_time
 
-    class_model = finetune_link_prediction(class_model, data, epochs=finetune_epochs)
+    # Fair edge split for LP
+    original_edges = data.edge_index
+    data.edge_index, rem_edge_list = split_edges_for_link_prediction(original_edges)
+
+    class_model = finetune_link_prediction(class_model, data, rem_edge_list, epochs=finetune_epochs)
 
     lp_eval_start_time = time.time()
-    link_prediction_results = evaluate_link_prediction(class_model, data)
+    link_prediction_results = evaluate_link_prediction(class_model, data, rem_edge_list)
     lp_eval_time = time.time() - lp_eval_start_time
 
     runtime = time.time() - start_time - classifer_eval_time - lp_eval_time

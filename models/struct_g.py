@@ -191,11 +191,15 @@ class StructuralGNN(nn.Module):
             raise ValueError("num_classes is None; classification head not initialized.")
         return self.classifier(embeddings)
 
-    def node_classification_loss(self, embeddings, labels):
+    def node_classification_loss(self, embeddings, labels, mask=None):
         """
         labels: [num_nodes] with integer class IDs.
+        mask: Optional boolean mask to select a subset of nodes for loss.
         """
         logits = self.classify_nodes(embeddings)
+        if mask is not None:
+            logits = logits[mask]
+            labels = labels[mask]
         return F.cross_entropy(logits, labels)
 
     ###########################################################################
@@ -289,8 +293,9 @@ class StructuralGNN(nn.Module):
     ###########################################################################
 
     def forward_and_loss(self, data, neg_sample_size=5, do_node_class=False,
-                         do_linkpred=False, do_featrec=False,
-                         do_n2v_align=False):
+                         do_linkpred=False, do_featrec=False, do_n2v_align=False,
+                         train_mask=None):
+
         edge_index = data.edge_index
         x = data.x
         embeddings = self.forward(x, edge_index)  # [num_nodes, output_dim]
@@ -299,7 +304,7 @@ class StructuralGNN(nn.Module):
 
         # (a) Node classification
         if do_node_class and hasattr(data, 'y') and data.y is not None:
-            cls_loss = self.node_classification_loss(embeddings, data.y)
+            cls_loss = self.node_classification_loss(embeddings, data.y, mask=train_mask)
             total_loss += cls_loss
 
         # (b) Link Prediction

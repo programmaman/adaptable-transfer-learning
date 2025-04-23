@@ -120,83 +120,53 @@ def pretrain_node2vec(model, node2vec_pretrain_epochs: int, batch_size: int = 12
 # ------------------------
 # Phase 2: Full Pre-training with Self-Supervision
 # ------------------------
-def pretrain_full_model(
-        model, classifier, data, labels, train_mask, full_pretrain_epochs: int,
-        do_linkpred: bool, do_n2v_align: bool, do_featrec: bool, device, log_every: int = 10):
-    """
-    Pretrains the full Structural GNN using self-supervised tasks along with node classification.
+def pretrain_full_model_internal(
+    model, data, labels, train_mask, full_pretrain_epochs,
+    do_linkpred, do_n2v_align, do_featrec, device, log_every=10
+):
+    print("\n=== Phase 2: Pre-training Structural GNN (with internal classifier) ===")
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
 
-    Args:
-        model: The StructuralGNN model.
-        classifier: The classification head (e.g., a Linear layer).
-        data: The graph data object.
-        labels: Node labels tensor.
-        train_mask: Training mask.
-        full_pretrain_epochs: Number of epochs.
-        do_linkpred: Whether to include link prediction loss.
-        do_n2v_align: Whether to include Node2Vec alignment loss.
-        do_featrec: Whether to include feature reconstruction loss.
-        device: Computation device.
-        log_every: Logging frequency.
-
-    Returns:
-        Tuple (model, classifier) after pre-training.
-    """
-    print("\n=== Phase 2: Pre-training the Structural GNN (with self-supervision) ===")
-    criterion = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(
-        list(model.parameters()) + list(classifier.parameters()),
-        lr=0.01, weight_decay=5e-4
-    )
+    # Attach labels to data so model can use them internally
+    data.y = labels.to(device)
 
     for epoch in range(full_pretrain_epochs):
         model.train()
-        classifier.train()
         optimizer.zero_grad()
 
-        embeddings, pretrain_loss = model.forward_and_loss(
+        _, total_loss = model.forward_and_loss(
             data,
             neg_sample_size=5,
             do_node_class=True,
             do_linkpred=do_linkpred,
             do_featrec=do_featrec,
-            do_n2v_align=do_n2v_align
+            do_n2v_align=do_n2v_align,
+            train_mask=train_mask,
         )
-        logits = classifier(embeddings)
-        cls_loss = criterion(logits[train_mask], labels.to(logits.device)[train_mask])
-        total_loss = pretrain_loss + cls_loss
-
         total_loss.backward()
         optimizer.step()
 
         if epoch % log_every == 0 or epoch == full_pretrain_epochs - 1:
-            print(
-                f"[Pretrain Epoch {epoch:03d}] Total Loss: {total_loss.item():.4f} | Cls: {cls_loss.item():.4f} | SSL: {pretrain_loss.item():.4f}")
+            print(f"[Pretrain Epoch {epoch:03d}] Total Loss: {total_loss.item():.4f}")
 
-    return model, classifier
+    return model
 
 
 # ------------------------
 # Evaluation Functions
 # ------------------------
-def evaluate_classification(model, classifier, data, labels, mask, device, verbose: bool = True) -> EvaluationResult:
-    """
-    Evaluates node classification performance for a GNN model + classifier head.
-    Returns an EvaluationResult object.
-    """
+def evaluate_classification_internal(model, data, labels, mask, device, verbose=True) -> EvaluationResult:
+    from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 
     model.eval()
-    classifier.eval()
-    labels = labels.to(device)
     mask = mask.to(device)
-
     node_indices = torch.arange(data.num_nodes, device=device)
 
     with torch.no_grad():
         embeddings = model(data.x.to(device), data.edge_index.to(device), node_indices)
-        logits = classifier(embeddings)
+        logits = model.classify_nodes(embeddings)
         preds = logits[mask].argmax(dim=1)
-        true = labels[mask]
+        true = labels.to(device)[mask]
 
     preds, true = preds.cpu(), true.cpu()
 
@@ -219,14 +189,8 @@ def evaluate_classification(model, classifier, data, labels, mask, device, verbo
             print(f"  → AUC (OvR): {auc:.4f}")
 
     return EvaluationResult(
-        accuracy=acc,
-        precision=precision,
-        recall=recall,
-        f1=f1,
-        auc=auc,
-        preds=preds
+        accuracy=acc, precision=precision, recall=recall, f1=f1, auc=auc, preds=preds
     )
-
 
 def evaluate_link_prediction(model, data, rem_edge_list, device) -> EvaluationResult:
     """
@@ -294,46 +258,29 @@ def evaluate_link_prediction(model, data, rem_edge_list, device) -> EvaluationRe
 # ------------------------
 # Phase 3: Fine-tuning for Node Classification
 # ------------------------
-def finetune_classification(model, classifier, data, labels, train_mask, finetune_epochs: int, device,
-                            log_every: int = 10):
-    """
-    Fine-tunes the model for node classification.
+def finetune_classification_internal(model, data, labels, train_mask, finetune_epochs, device, log_every=10):
+    print("\n=== Phase 3: Fine-tuning for Node Classification (internal classifier) ===")
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
 
-    Args:
-        model: The StructuralGNN model.
-        classifier: The classification head.
-        data: Graph data object.
-        labels: Node labels tensor.
-        train_mask: Training mask.
-        finetune_epochs: Number of fine-tuning epochs.
-        device: Computation device.
-        log_every: Logging frequency.
+    # Attach labels to data so model can use them internally
+    data.y = labels.to(device)
 
-    Returns:
-        Tuple (model, classifier) after fine-tuning.
-    """
-    optimizer = torch.optim.Adam(list(model.parameters()) + list(classifier.parameters()), lr=0.01, weight_decay=5e-4)
-    criterion = torch.nn.CrossEntropyLoss()
-    data_x = data.x.to(device)
-    edge_index = data.edge_index.to(device)
     node_indices = torch.arange(data.num_nodes, device=device)
 
-    print("\n=== Phase 3: Fine-tuning for Node Classification ===")
     for epoch in range(finetune_epochs):
         model.train()
-        classifier.train()
         optimizer.zero_grad()
-        embeddings = model(data_x, edge_index, node_indices)
-        logits = classifier(embeddings)
-        loss = criterion(logits[train_mask], labels.to(device)[train_mask])
+
+        embeddings = model(data.x.to(device), data.edge_index.to(device), node_indices)
+        loss = model.node_classification_loss(embeddings, data.y)
         loss.backward()
         optimizer.step()
 
         if epoch % log_every == 0 or epoch == finetune_epochs - 1:
             print(f"[Fine-tune Epoch {epoch:03d}] Loss: {loss.item():.4f}")
-            _ = evaluate_classification(model, classifier, data, labels, data.val_mask, device, verbose=True)
+            _ = evaluate_classification_internal(model, data, labels, data.val_mask, device)
 
-    return model, classifier
+    return model
 
 
 # Fine Tune Link Prediction
@@ -399,74 +346,89 @@ def finetune_link_prediction(
 # ------------------------
 # Main Pipeline Function
 # ------------------------
-def run_structg_pipeline(
-        data,
-        labels,
-        hidden_dim: int = 64,
-        output_dim: int = 32,
-        embedding_dim: int = 128,
-        num_layers: int = 2,
-        pretrain_epochs: int = 100,
-        finetune_epochs: int = 30,
-        do_linkpred: bool = True,
-        do_n2v_align: bool = True,
-        do_featrec: bool = False,
-        seed: int = 42,
-        num_classes: int = None,
+def run_structg_pipeline_internal(
+    data,
+    labels,
+    hidden_dim: int = 64,
+    output_dim: int = 32,
+    embedding_dim: int = 128,
+    num_layers: int = 2,
+    pretrain_epochs: int = 100,
+    finetune_epochs: int = 30,
+    do_linkpred: bool = True,
+    do_n2v_align: bool = True,
+    do_featrec: bool = False,
+    seed: int = 42,
 ):
-    from experiments.experiment_utils import set_global_seed
+    import time
+    from utils import get_device
+    from experiments.experiment_utils import set_global_seed, split_edges_for_link_prediction
 
     set_global_seed(seed)
     device = get_device()
     print(f"Using device: {device} | Seed: {seed}")
 
     num_nodes = data.num_nodes
-    train_mask, val_mask, test_mask = create_masks(num_nodes, device=device)
-    data.train_mask = train_mask
-    data.val_mask = val_mask
-    data.test_mask = test_mask
+    num_classes = labels.unique().numel()
 
+    # Masks
+    train_mask, val_mask, test_mask = create_masks(num_nodes, device=device)
+    data.train_mask, data.val_mask, data.test_mask = train_mask, val_mask, test_mask
+
+    # Attach labels to data for internal use
+    data.y = labels.to(device)
+
+    # Edge splitting for link prediction
     data.edge_index, rem_edge_list = split_edges_for_link_prediction(data.edge_index, removal_ratio=0.3)
     node_indices = torch.arange(num_nodes, device=device)
 
-    model = init_structural_gnn(data, hidden_dim, output_dim, embedding_dim, num_layers, do_featrec, device, num_classes)
-    num_classes = labels.unique().numel()
-    classifier = torch.nn.Linear(output_dim, num_classes).to(device)
+    # Initialize model with internal classifier
+    model = init_structural_gnn(
+        data, hidden_dim, output_dim, embedding_dim, num_layers, do_featrec,
+        device, num_classes=num_classes
+    )
 
     start_time = time.time()
 
+    # Phase 1: Node2Vec pretraining
     model = pretrain_node2vec(model, pretrain_epochs, batch_size=128, lr=0.01, verbose=True)
 
-    model, classifier = pretrain_full_model(model, classifier, data, labels, train_mask,
-                                            pretrain_epochs, do_linkpred, do_n2v_align, do_featrec, device,
-                                            log_every=10)
+    # Phase 2: SSL + classification (internal classifier)
+    model = pretrain_full_model_internal(
+        model, data, labels, train_mask, pretrain_epochs,
+        do_linkpred, do_n2v_align, do_featrec, device, log_every=10
+    )
 
-    model, classifier = finetune_classification(model, classifier, data, labels, train_mask,
-                                                finetune_epochs, device, log_every=10)
+    # Phase 3: Finetuning for classification
+    model = finetune_classification_internal(
+        model, data, labels, train_mask, finetune_epochs, device, log_every=10
+    )
 
+    # Evaluation: Classification
+    classifier_eval_start = time.time()
+    classifier_results = evaluate_classification_internal(model, data, labels, test_mask, device, verbose=True)
+    classifier_eval_time = time.time() - classifier_eval_start
 
-    classifier_evaluation_start_time = time.time()
-    classifier_results = evaluate_classification(model, classifier, data, labels, test_mask, device, verbose=True)
-    classifier_evaluation_time = time.time() - classifier_evaluation_start_time
-
+    # Optional: Link prediction
     if do_linkpred:
         model = finetune_link_prediction(model, data, rem_edge_list, finetune_epochs=25, device=device)
-        finetune_link_prediction(model, data, rem_edge_list, finetune_epochs, device=device)
+        model = finetune_link_prediction(model, data, rem_edge_list, finetune_epochs, device=device)
 
-        lp_evaluation_start_time = time.time()
+        lp_eval_start = time.time()
         lp_results = evaluate_link_prediction(model, data, rem_edge_list, device)
-        lp_evaluation_time = time.time() - lp_evaluation_start_time
+        lp_eval_time = time.time() - lp_eval_start
     else:
         lp_results = None
+        lp_eval_time = 0
 
-    total_time = time.time() - start_time - classifier_evaluation_time - (lp_evaluation_time if lp_results else 0)
-    print(f"→ Total Training Time: {total_time:.2f} seconds")
+    total_time = time.time() - start_time - classifier_eval_time - lp_eval_time
 
     classifier_results.metadata.update({
         "seed": seed,
         "train_time": total_time,
         "device": str(device),
-        "model": "StructuralGNN"
+        "model": "StructuralGNN",
+        "using_internal_classifier": True
     })
 
     if lp_results:
@@ -474,8 +436,10 @@ def run_structg_pipeline(
             "seed": seed,
             "train_time": total_time,
             "device": str(device),
-            "model": "StructuralGNN"
+            "model": "StructuralGNN",
+            "using_internal_classifier": True
         })
 
-    return model, classifier, classifier_results, lp_results
+    return model, classifier_results, lp_results
+
 

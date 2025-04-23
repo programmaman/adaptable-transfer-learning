@@ -2,9 +2,10 @@ import torch
 import torch.nn.functional as f
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, \
     average_precision_score, classification_report
+from experiments.experiment_utils import split_edges_for_link_prediction, sample_negative_edges
 
 from experiments.experiment_utils import EvaluationResult
-from models.structural_gcn import (
+from models.deep_gcn import (
     StructuralGcn,
     GnnClassifierHead,
     train_structural_feature_predictor,
@@ -60,9 +61,9 @@ def evaluate_model(model, data, labels, device, verbose=True) -> EvaluationResul
         )
 
 
-def evaluate_link_prediction(model, data, num_samples=1000, device='cpu') -> EvaluationResult:
+def evaluate_link_prediction(model, data, rem_edge_list, device='cpu') -> EvaluationResult:
     """
-    Evaluates link prediction performance using dot product scores between positive and negative edges.
+    Evaluates link prediction performance using only held-out edges from rem_edge_list (fair evaluation).
     Returns an EvaluationResult object.
     """
     model.eval()
@@ -74,27 +75,21 @@ def evaluate_link_prediction(model, data, num_samples=1000, device='cpu') -> Eva
     if emb.dim() == 1:
         emb = emb.unsqueeze(-1)
 
-    num_nodes = data.num_nodes
-    edge_index = data.edge_index
+    # Use held-out edges for positive samples
+    pos_edges = rem_edge_list[0][0].to(device)
+    n = data.num_nodes
 
-    # Sample positive edges
-    pos_idx = torch.randperm(edge_index.size(1))[:num_samples]
-    pos_src, pos_dst = edge_index[0, pos_idx], edge_index[1, pos_idx]
+    # Sample negative edges matching the count and shape
+    neg_edges = sample_negative_edges(pos_edges, n).to(device)
 
-    # Sample negative edges
-    neg_src = torch.randint(0, num_nodes, (num_samples,), device=device)
-    neg_dst = torch.randint(0, num_nodes, (num_samples,), device=device)
+    def dot_score(u, v):
+        return (u * v).sum(dim=1)
 
-    def dot_score(u, v): return (u * v).sum(dim=1)
+    pos_scores = dot_score(emb[pos_edges[:, 0]], emb[pos_edges[:, 1]])
+    neg_scores = dot_score(emb[neg_edges[:, 0]], emb[neg_edges[:, 1]])
 
-    pos_score = dot_score(emb[pos_src], emb[pos_dst])
-    neg_score = dot_score(emb[neg_src], emb[neg_dst])
-
-    scores = torch.cat([pos_score, neg_score])
-    labels = torch.cat([
-        torch.ones_like(pos_score),
-        torch.zeros_like(neg_score)
-    ])
+    scores = torch.cat([pos_scores, neg_scores])
+    labels = torch.cat([torch.ones_like(pos_scores), torch.zeros_like(neg_scores)])
 
     preds = (scores > 0).float()
 
@@ -106,13 +101,13 @@ def evaluate_link_prediction(model, data, num_samples=1000, device='cpu') -> Eva
     auc = roc_auc_score(labels.cpu(), scores.cpu())
     ap = average_precision_score(labels.cpu(), scores.cpu())
 
-    print(f"\n=== Link Prediction ===")
-    print(f"  → Accuracy:  {acc:.4f}")
-    print(f"  → Precision: {precision:.4f}")
-    print(f"  → Recall:    {recall:.4f}")
-    print(f"  → F1 Score:  {f1:.4f}")
-    print(f"  → AUC:       {auc:.4f}")
-    print(f"  → AP:        {ap:.4f}")
+    print(f"\n=== GCN Link Prediction (Fair Evaluation) ===")
+    print(f"  → Accuracy:       {acc:.4f}")
+    print(f"  → Precision:      {precision:.4f}")
+    print(f"  → Recall:         {recall:.4f}")
+    print(f"  → F1 Score:       {f1:.4f}")
+    print(f"  → ROC-AUC:        {auc:.4f}")
+    print(f"  → Avg Precision:  {ap:.4f}")
 
     return EvaluationResult(
         accuracy=acc,
@@ -170,9 +165,13 @@ def run_structural_gcn_pipeline(data, labels, hidden_dim=64, mid_dim=32, pretrai
     classification_results = evaluate_model(classifier_model, data, labels, device=device)
     classifer_eval_time = time.time() - classifer_eval_start_time
 
-    classifier_model = fine_tune_link_prediction(classifier_model, data, epochs=finetune_epochs, device=device)
+    original_edges = data.edge_index
+    data.edge_index, rem_edge_list = split_edges_for_link_prediction(original_edges)
+    classifier_model = fine_tune_link_prediction(
+        classifier_model, data, rem_edge_list=rem_edge_list, epochs=finetune_epochs, device=device
+    )
     lp_eval_start_time = time.time()
-    lp_results = evaluate_link_prediction(classifier_model, data, device=device)
+    lp_results = evaluate_link_prediction(classifier_model, data, rem_edge_list, device=device)
     lp_eval_time = time.time() - lp_eval_start_time
 
     runtime = time.time() - start_time - classifer_eval_time - lp_eval_time
