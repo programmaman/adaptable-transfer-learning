@@ -5,4 +5,4 @@ COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . /app
 ENV PYTHONPATH="/app"
-CMD ["python", "experiments/experiment_runner.py"]
+CMD ["python", "experiments/struct_g_sweep.py"]

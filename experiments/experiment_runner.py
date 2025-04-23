@@ -17,7 +17,7 @@ from experiments.gnn_pipeline import run_pipeline
 from experiments.graph_sage_pipeline import run_graphsage_pipeline
 from experiments.struct_gcn_pipeline import run_structural_gcn_pipeline
 from experiments.gpt_gnn_pipeline import run_gpt_gnn_pipeline
-from experiments.struct_gnn_pipeline import run_structg_pipeline
+from experiments.struct_g_pipeline import run_structg_pipeline
 
 
 def print_run_results(run, results):

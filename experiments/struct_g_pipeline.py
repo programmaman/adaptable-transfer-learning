@@ -55,7 +55,8 @@ def create_masks(num_nodes: int, train_ratio: float = 0.6, val_ratio: float = 0.
 # Model Initialization
 # ------------------------
 def init_structural_gnn(data, hidden_dim: int, output_dim: int,
-                        embedding_dim: int, num_layers: int, do_featrec: bool, device):
+                        embedding_dim: int, num_layers: int, do_featrec: bool,
+                        device, num_classes: int = None):
     """
     Initializes the StructuralGNN model.
 
@@ -80,8 +81,8 @@ def init_structural_gnn(data, hidden_dim: int, output_dim: int,
         output_dim=output_dim,
         embedding_dim=embedding_dim,
         num_layers=num_layers,
-        use_gat=True,  # Modify if you want to use or not use GAT
-        num_classes=None,  # Classification is done with an external head
+        use_gat=True,
+        num_classes=num_classes,  # ← pass it here
         feat_reconstruction=do_featrec
     ).to(device)
     return model
@@ -410,7 +411,8 @@ def run_structg_pipeline(
         do_linkpred: bool = True,
         do_n2v_align: bool = True,
         do_featrec: bool = False,
-        seed: int = 42
+        seed: int = 42,
+        num_classes: int = None,
 ):
     from experiments.experiment_utils import set_global_seed
 
@@ -427,7 +429,7 @@ def run_structg_pipeline(
     data.edge_index, rem_edge_list = split_edges_for_link_prediction(data.edge_index, removal_ratio=0.3)
     node_indices = torch.arange(num_nodes, device=device)
 
-    model = init_structural_gnn(data, hidden_dim, output_dim, embedding_dim, num_layers, do_featrec, device)
+    model = init_structural_gnn(data, hidden_dim, output_dim, embedding_dim, num_layers, do_featrec, device, num_classes)
     num_classes = labels.unique().numel()
     classifier = torch.nn.Linear(output_dim, num_classes).to(device)
 
