@@ -89,9 +89,9 @@ def run_synthetic_experiments(num_runs=5):
         print("\n========== [Synthetic] GPT-GNN ==========")
         _, gpt_cls, gpt_lp = run_gpt_gnn_pipeline(data, labels, seed=seed)
 
-        # Struct-G External Classifier Head (Node2Vec)
-        print("\n========== [Synthetic] Struct-G External Classifier Head (Node2Vec) ==========")
-        _, _, structgnn_cls, structgnn_lp = run_structg_pipeline(data, labels, seed=seed)
+        # Struct-G Structural Only Pretrain (Node2Vec)
+        print("\n========== [Synthetic] Struct-G Structural Only Pretrain (Node2Vec) ==========")
+        _, structgnn_ssl_cls, structgnn_ssl_lp = run_structg_pipeline(data, labels, seed=seed)
 
         #Struct-G Internal Classifier
         print("\n========== [Synthetic] Struct-G Internal Classifier ==========")
@@ -110,7 +110,7 @@ def run_synthetic_experiments(num_runs=5):
             {"Experiment": "Synthetic", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_cls.as_dict()},
             {"Experiment": "Synthetic", "Run": run, "Pipeline": "Deep GCN", **sgcn_cls.as_dict()},
             {"Experiment": "Synthetic", "Run": run, "Pipeline": "GPT-GNN", **gpt_cls.as_dict()},
-            {"Experiment": "Synthetic", "Run": run, "Pipeline": "Struct-G External Classifier Head", **structgnn_cls.as_dict()},
+            {"Experiment": "Synthetic", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_ssl_cls.as_dict()},
             {"Experiment": "Synthetic", "Run": run, "Pipeline": "Struct-G Internal Classifier", **structgnn_cls.as_dict()},
             {"Experiment": "Synthetic", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_cls.as_dict()},
             {"Experiment": "Synthetic", "Run": run, "Pipeline": "SimpleGAT", **simplegat_cls.as_dict()},
@@ -121,7 +121,7 @@ def run_synthetic_experiments(num_runs=5):
             {"Experiment": "Synthetic", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_lp.as_dict()},
             {"Experiment": "Synthetic", "Run": run, "Pipeline": "Deep GCN", **sgcn_lp.as_dict()},
             {"Experiment": "Synthetic", "Run": run, "Pipeline": "GPT-GNN", **gpt_lp.as_dict()},
-            {"Experiment": "Synthetic", "Run": run, "Pipeline": "Struct-G External Classifier Head", **structgnn_lp.as_dict()},
+            {"Experiment": "Synthetic", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_ssl_lp.as_dict()},
             {"Experiment": "Synthetic", "Run": run, "Pipeline": "Struct-G Internal Classifier", **structgnn_lp.as_dict()},
             {"Experiment": "Synthetic", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_lp.as_dict()},
             {"Experiment": "Synthetic", "Run": run, "Pipeline": "SimpleGAT", **simplegat_lp.as_dict()},
@@ -158,7 +158,7 @@ def run_facebook_experiments(edge_path, features_path, target_path, num_runs=5):
         _, structural_cls, structural_lp = run_structural_gcn_pipeline(data, labels, seed=seed)
         print("\n========== [Facebook] GPT-GNN ==========")
         _, gpt_cls, gpt_lp = run_gpt_gnn_pipeline(data, labels, seed=seed)
-        print("\n========== [Facebook] Struct-G External Classifier Head (Node2Vec) ==========")
+        print("\n========== [Facebook] Struct-G Structural Only Pretrain (Node2Vec) ==========")
         _, _, structgnn_cls, structgnn_lp = run_structg_pipeline(data, labels, seed=seed)
         print("\n========== [Facebook] Struct-G Internal Classifier ==========")
         _, structgnn_cls, structgnn_lp = run_structg_pipeline_internal(data, labels, seed=seed, do_linkpred=True)
@@ -171,7 +171,7 @@ def run_facebook_experiments(edge_path, features_path, target_path, num_runs=5):
             {"Experiment": "Facebook", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_cls.as_dict()},
             {"Experiment": "Facebook", "Run": run, "Pipeline": "Deep GCN", **structural_cls.as_dict()},
             {"Experiment": "Facebook", "Run": run, "Pipeline": "GPT-GNN", **gpt_cls.as_dict()},
-            {"Experiment": "Facebook", "Run": run, "Pipeline": "Struct-G External Classifier Head", **structgnn_cls.as_dict()},
+            {"Experiment": "Facebook", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_cls.as_dict()},
             {"Experiment": "Facebook", "Run": run, "Pipeline": "Struct-G Internal Classifier", **structgnn_cls.as_dict()},
             {"Experiment": "Facebook", "Run": run, "Pipeline": "SimpleGAT", **simplegat_cls.as_dict()},
             {"Experiment": "Facebook", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_cls.as_dict()},
@@ -181,7 +181,7 @@ def run_facebook_experiments(edge_path, features_path, target_path, num_runs=5):
             {"Experiment": "Facebook", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_lp.as_dict()},
             {"Experiment": "Facebook", "Run": run, "Pipeline": "Deep GCN", **structural_lp.as_dict()},
             {"Experiment": "Facebook", "Run": run, "Pipeline": "GPT-GNN", **gpt_lp.as_dict()},
-            {"Experiment": "Facebook", "Run": run, "Pipeline": "Struct-G External Classifier Head", **structgnn_lp.as_dict()},
+            {"Experiment": "Facebook", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_lp.as_dict()},
             {"Experiment": "Facebook", "Run": run, "Pipeline": "Struct-G Internal Classifier", **structgnn_lp.as_dict()},
             {"Experiment": "Facebook", "Run": run, "Pipeline": "SimpleGAT", **simplegat_lp.as_dict()},
             {"Experiment": "Facebook", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_lp.as_dict()},
@@ -219,7 +219,7 @@ def run_email_eu_core_experiments(edge_path, label_path, num_runs=5):
         _, structural_cls, structural_lp = run_structural_gcn_pipeline(data, labels, seed=seed)
         print("\n========== [Email-EU-Core] GPT-GNN ==========")
         _, gpt_cls, gpt_lp = run_gpt_gnn_pipeline(data, labels, seed=seed)
-        print("\n========== [Email-EU-Core] Struct-G External Classifier Head (Node2Vec) ==========")
+        print("\n========== [Email-EU-Core] Struct-G Structural Only Pretrain (Node2Vec) ==========")
         _, _, structgnn_cls, structgnn_lp = run_structg_pipeline(data, labels, seed=seed)
         print("\n========== [Email-EU-Core] Struct-G Internal Classifier ==========")
         _, structgnn_cls, structgnn_lp = run_structg_pipeline_internal(data, labels, seed=seed, do_linkpred=True)
@@ -232,7 +232,7 @@ def run_email_eu_core_experiments(edge_path, label_path, num_runs=5):
             {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_cls.as_dict()},
             {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "Deep GCN", **structural_cls.as_dict()},
             {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "GPT-GNN", **gpt_cls.as_dict()},
-            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "Struct-G External Classifier Head", **structgnn_cls.as_dict()},
+            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_cls.as_dict()},
             {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "Struct-G Internal Classifier", **structgnn_cls.as_dict()},
             {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "SimpleGAT", **simplegat_cls.as_dict()},
             {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_cls.as_dict()},
@@ -242,7 +242,7 @@ def run_email_eu_core_experiments(edge_path, label_path, num_runs=5):
             {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_lp.as_dict()},
             {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "Deep GCN", **structural_lp.as_dict()},
             {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "GPT-GNN", **gpt_lp.as_dict()},
-            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "Struct-G External Classifier Head", **structgnn_lp.as_dict()},
+            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_lp.as_dict()},
             {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "Struct-G Internal Classifier", **structgnn_lp.as_dict()},
             {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "SimpleGAT", **simplegat_lp.as_dict()},
             {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_lp.as_dict()},
@@ -280,7 +280,7 @@ def run_github_experiments(edge_path, features_path, target_path, num_runs=5):
         _, structural_cls, structural_lp = run_structural_gcn_pipeline(data, labels, seed=seed)
         print("\n========== [GitHub] GPT-GNN ==========")
         _, gpt_cls, gpt_lp = run_gpt_gnn_pipeline(data, labels, seed=seed)
-        print("\n========== [GitHub] Struct-G External Classifier Head (Node2Vec) ==========")
+        print("\n========== [GitHub] Struct-G Structural Only Pretrain (Node2Vec) ==========")
         _, _, structgnn_cls, structgnn_lp = run_structg_pipeline(data, labels, seed=seed)
         print("\n========== [GitHub] Struct-G Internal Classifier ==========")
         _, structgnn_cls, structgnn_lp = run_structg_pipeline_internal(data, labels, seed=seed, do_linkpred=True)
@@ -293,7 +293,7 @@ def run_github_experiments(edge_path, features_path, target_path, num_runs=5):
             {"Experiment": "GitHub", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_cls.as_dict()},
             {"Experiment": "GitHub", "Run": run, "Pipeline": "Deep GCN", **structural_cls.as_dict()},
             {"Experiment": "GitHub", "Run": run, "Pipeline": "GPT-GNN", **gpt_cls.as_dict()},
-            {"Experiment": "GitHub", "Run": run, "Pipeline": "Struct-G External Classifier Head", **structgnn_cls.as_dict()},
+            {"Experiment": "GitHub", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_cls.as_dict()},
             {"Experiment": "GitHub", "Run": run, "Pipeline": "Struct-G Internal Classifier", **structgnn_cls.as_dict()},
             {"Experiment": "GitHub", "Run": run, "Pipeline": "SimpleGAT", **simplegat_cls.as_dict()},
             {"Experiment": "GitHub", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_cls.as_dict()},
@@ -303,7 +303,7 @@ def run_github_experiments(edge_path, features_path, target_path, num_runs=5):
             {"Experiment": "GitHub", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_lp.as_dict()},
             {"Experiment": "GitHub", "Run": run, "Pipeline": "Deep GCN", **structural_lp.as_dict()},
             {"Experiment": "GitHub", "Run": run, "Pipeline": "GPT-GNN", **gpt_lp.as_dict()},
-            {"Experiment": "GitHub", "Run": run, "Pipeline": "Struct-G External Classifier Head", **structgnn_lp.as_dict()},
+            {"Experiment": "GitHub", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_lp.as_dict()},
             {"Experiment": "GitHub", "Run": run, "Pipeline": "Struct-G Internal Classifier", **structgnn_lp.as_dict()},
             {"Experiment": "GitHub", "Run": run, "Pipeline": "SimpleGAT", **simplegat_lp.as_dict()},
             {"Experiment": "GitHub", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_lp.as_dict()},
@@ -336,7 +336,7 @@ def run_deezer_experiments(edge_path, features_path, target_path, num_runs=5):
         _, structural_cls, structural_lp = run_structural_gcn_pipeline(data, labels, seed=seed)
         print("\n========== [Deezer] GPT-GNN ==========")
         _, gpt_cls, gpt_lp = run_gpt_gnn_pipeline(data, labels, seed=seed)
-        print("\n========== [Deezer] Struct-G External Classifier Head (Node2Vec) ==========")
+        print("\n========== [Deezer] Struct-G Structural Only Pretrain (Node2Vec) ==========")
         _, _, structgnn_cls, structgnn_lp = run_structg_pipeline(data, labels, seed=seed)
         print("\n========== [Deezer] Struct-G Internal Classifier ==========")
         _, structgnn_cls, structgnn_lp = run_structg_pipeline_internal(data, labels, seed=seed, do_linkpred=True)
@@ -349,7 +349,7 @@ def run_deezer_experiments(edge_path, features_path, target_path, num_runs=5):
             {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_cls.as_dict()},
             {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "Deep GCN", **structural_cls.as_dict()},
             {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "GPT-GNN", **gpt_cls.as_dict()},
-            {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "Struct-G External Classifier Head", **structgnn_cls.as_dict()},
+            {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_cls.as_dict()},
             {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "Struct-G Internal Classifier", **structgnn_cls.as_dict()},
             {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "SimpleGAT", **simplegat_cls.as_dict()},
             {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_cls.as_dict()},
@@ -359,7 +359,7 @@ def run_deezer_experiments(edge_path, features_path, target_path, num_runs=5):
             {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_lp.as_dict()},
             {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "Deep GCN", **structural_lp.as_dict()},
             {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "GPT-GNN", **gpt_lp.as_dict()},
-            {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "Struct-G External Classifier Head", **structgnn_lp.as_dict()},
+            {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_lp.as_dict()},
             {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "Struct-G Internal Classifier", **structgnn_lp.as_dict()},
             {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "SimpleGAT", **simplegat_lp.as_dict()},
             {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_lp.as_dict()},
@@ -390,8 +390,8 @@ def run_twitch_experiments(edge_path, target_path, num_runs=5):
         _, structural_cls, structural_lp = run_structural_gcn_pipeline(data, labels, seed=seed)
         print("\n========== [Twitch] GPT-GNN ==========")
         _, gpt_cls, gpt_lp = run_gpt_gnn_pipeline(data, labels, seed=seed)
-        print("\n========== [Twitch] Struct-G External Classifier Head (Node2Vec) ==========")
-        _, _, structgnn_cls, structgnn_lp = run_structg_pipeline(data, labels, seed=seed)
+        print("\n========== [Twitch] Struct-G Structural Only Pretrain (Node2Vec) ==========")
+        _, structgnn_cls, structgnn_lp = run_structg_pipeline(data, labels, seed=seed)
         print("\n========== [Twitch] Struct-G Internal Classifier ==========")
         _, structgnn_cls, structgnn_lp = run_structg_pipeline_internal(data, labels, seed=seed, do_linkpred=True)
         print("\n========== [Twitch] SimpleGAT ==========")
@@ -403,7 +403,7 @@ def run_twitch_experiments(edge_path, target_path, num_runs=5):
             {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_cls.as_dict()},
             {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "Deep GCN", **structural_cls.as_dict()},
             {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "GPT-GNN", **gpt_cls.as_dict()},
-            {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "Struct-G External Classifier Head", **structgnn_cls.as_dict()},
+            {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_cls.as_dict()},
             {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "Struct-G Internal Classifier", **structgnn_cls.as_dict()},
             {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "SimpleGAT", **simplegat_cls.as_dict()},
             {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_cls.as_dict()},
@@ -413,7 +413,7 @@ def run_twitch_experiments(edge_path, target_path, num_runs=5):
             {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_lp.as_dict()},
             {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "Deep GCN", **structural_lp.as_dict()},
             {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "GPT-GNN", **gpt_lp.as_dict()},
-            {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "Struct-G External Classifier Head", **structgnn_lp.as_dict()},
+            {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_lp.as_dict()},
             {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "Struct-G", **structgnn_lp.as_dict()},
             {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "SimpleGAT", **simplegat_lp.as_dict()},
             {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_lp.as_dict()},
