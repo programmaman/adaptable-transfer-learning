@@ -37,13 +37,17 @@ def generate_config_grid(config_dict):
     return [dict(zip(keys, v)) for v in product]
 
 
-def assign_community_labels(G):
-    communities = list(label_propagation_communities(G))
-    comm_map = {}
-    for label, nodes in enumerate(communities):
-        for node in nodes:
-            comm_map[node] = label
-    nx.set_node_attributes(G, comm_map, 'y')
+def assign_community_labels(G, noise_prob=0.33):
+    labels = []
+    for node in G.nodes():
+        true_block = int(node < N_NODES // 2)
+        if np.random.rand() < noise_prob:
+            noisy_label = 1 - true_block
+        else:
+            noisy_label = true_block
+        labels.append(noisy_label)
+    for i, label in enumerate(labels):
+        G.nodes[i]['y'] = label
     return G
 
 
