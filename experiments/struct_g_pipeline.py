@@ -414,7 +414,7 @@ def run_structg_pipeline(
         finetune_epochs: int = 30,
         do_linkpred: bool = True,
         do_n2v_align: bool = True,
-        do_featrec: bool = False,
+        do_featrec: bool = True,
         seed: int = 42,
         num_classes: int = None,
 ):
