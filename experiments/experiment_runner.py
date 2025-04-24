@@ -159,7 +159,7 @@ def run_facebook_experiments(edge_path, features_path, target_path, num_runs=5):
         print("\n========== [Facebook] GPT-GNN ==========")
         _, gpt_cls, gpt_lp = run_gpt_gnn_pipeline(data, labels, seed=seed)
         print("\n========== [Facebook] Struct-G Structural Only Pretrain (Node2Vec) ==========")
-        _, _, structgnn_cls, structgnn_lp = run_structg_pipeline(data, labels, seed=seed)
+        _, structgnn_ssl_cls, structgnn_ssl_lp = run_structg_pipeline(data, labels, seed=seed)
         print("\n========== [Facebook] Struct-G Internal Classifier ==========")
         _, structgnn_cls, structgnn_lp = run_structg_pipeline_internal(data, labels, seed=seed, do_linkpred=True)
         print("\n========== [Facebook] SimpleGAT ==========")
@@ -171,7 +171,7 @@ def run_facebook_experiments(edge_path, features_path, target_path, num_runs=5):
             {"Experiment": "Facebook", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_cls.as_dict()},
             {"Experiment": "Facebook", "Run": run, "Pipeline": "Deep GCN", **structural_cls.as_dict()},
             {"Experiment": "Facebook", "Run": run, "Pipeline": "GPT-GNN", **gpt_cls.as_dict()},
-            {"Experiment": "Facebook", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_cls.as_dict()},
+            {"Experiment": "Facebook", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_ssl_cls.as_dict()},
             {"Experiment": "Facebook", "Run": run, "Pipeline": "Struct-G Internal Classifier", **structgnn_cls.as_dict()},
             {"Experiment": "Facebook", "Run": run, "Pipeline": "SimpleGAT", **simplegat_cls.as_dict()},
             {"Experiment": "Facebook", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_cls.as_dict()},
@@ -181,7 +181,7 @@ def run_facebook_experiments(edge_path, features_path, target_path, num_runs=5):
             {"Experiment": "Facebook", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_lp.as_dict()},
             {"Experiment": "Facebook", "Run": run, "Pipeline": "Deep GCN", **structural_lp.as_dict()},
             {"Experiment": "Facebook", "Run": run, "Pipeline": "GPT-GNN", **gpt_lp.as_dict()},
-            {"Experiment": "Facebook", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_lp.as_dict()},
+            {"Experiment": "Facebook", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_ssl_lp.as_dict()},
             {"Experiment": "Facebook", "Run": run, "Pipeline": "Struct-G Internal Classifier", **structgnn_lp.as_dict()},
             {"Experiment": "Facebook", "Run": run, "Pipeline": "SimpleGAT", **simplegat_lp.as_dict()},
             {"Experiment": "Facebook", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_lp.as_dict()},
@@ -220,7 +220,7 @@ def run_email_eu_core_experiments(edge_path, label_path, num_runs=5):
         print("\n========== [Email-EU-Core] GPT-GNN ==========")
         _, gpt_cls, gpt_lp = run_gpt_gnn_pipeline(data, labels, seed=seed)
         print("\n========== [Email-EU-Core] Struct-G Structural Only Pretrain (Node2Vec) ==========")
-        _, _, structgnn_cls, structgnn_lp = run_structg_pipeline(data, labels, seed=seed)
+        _, structgnn_ssl_cls, structgnn_ssl_lp = run_structg_pipeline(data, labels, seed=seed)
         print("\n========== [Email-EU-Core] Struct-G Internal Classifier ==========")
         _, structgnn_cls, structgnn_lp = run_structg_pipeline_internal(data, labels, seed=seed, do_linkpred=True)
         print("\n========== [Email-EU-Core] SimpleGAT ==========")
@@ -232,7 +232,7 @@ def run_email_eu_core_experiments(edge_path, label_path, num_runs=5):
             {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_cls.as_dict()},
             {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "Deep GCN", **structural_cls.as_dict()},
             {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "GPT-GNN", **gpt_cls.as_dict()},
-            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_cls.as_dict()},
+            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_ssl_cls.as_dict()},
             {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "Struct-G Internal Classifier", **structgnn_cls.as_dict()},
             {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "SimpleGAT", **simplegat_cls.as_dict()},
             {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_cls.as_dict()},
@@ -242,7 +242,7 @@ def run_email_eu_core_experiments(edge_path, label_path, num_runs=5):
             {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_lp.as_dict()},
             {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "Deep GCN", **structural_lp.as_dict()},
             {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "GPT-GNN", **gpt_lp.as_dict()},
-            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_lp.as_dict()},
+            {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_ssl_lp.as_dict()},
             {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "Struct-G Internal Classifier", **structgnn_lp.as_dict()},
             {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "SimpleGAT", **simplegat_lp.as_dict()},
             {"Experiment": "Email-EU-Core", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_lp.as_dict()},
@@ -281,7 +281,7 @@ def run_github_experiments(edge_path, features_path, target_path, num_runs=5):
         print("\n========== [GitHub] GPT-GNN ==========")
         _, gpt_cls, gpt_lp = run_gpt_gnn_pipeline(data, labels, seed=seed)
         print("\n========== [GitHub] Struct-G Structural Only Pretrain (Node2Vec) ==========")
-        _, _, structgnn_cls, structgnn_lp = run_structg_pipeline(data, labels, seed=seed)
+        _, structgnn_ssl_cls, structgnn_ssl_lp = run_structg_pipeline(data, labels, seed=seed)
         print("\n========== [GitHub] Struct-G Internal Classifier ==========")
         _, structgnn_cls, structgnn_lp = run_structg_pipeline_internal(data, labels, seed=seed, do_linkpred=True)
         print("\n========== [GitHub] SimpleGAT ==========")
@@ -293,7 +293,7 @@ def run_github_experiments(edge_path, features_path, target_path, num_runs=5):
             {"Experiment": "GitHub", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_cls.as_dict()},
             {"Experiment": "GitHub", "Run": run, "Pipeline": "Deep GCN", **structural_cls.as_dict()},
             {"Experiment": "GitHub", "Run": run, "Pipeline": "GPT-GNN", **gpt_cls.as_dict()},
-            {"Experiment": "GitHub", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_cls.as_dict()},
+            {"Experiment": "GitHub", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_ssl_cls.as_dict()},
             {"Experiment": "GitHub", "Run": run, "Pipeline": "Struct-G Internal Classifier", **structgnn_cls.as_dict()},
             {"Experiment": "GitHub", "Run": run, "Pipeline": "SimpleGAT", **simplegat_cls.as_dict()},
             {"Experiment": "GitHub", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_cls.as_dict()},
@@ -303,7 +303,7 @@ def run_github_experiments(edge_path, features_path, target_path, num_runs=5):
             {"Experiment": "GitHub", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_lp.as_dict()},
             {"Experiment": "GitHub", "Run": run, "Pipeline": "Deep GCN", **structural_lp.as_dict()},
             {"Experiment": "GitHub", "Run": run, "Pipeline": "GPT-GNN", **gpt_lp.as_dict()},
-            {"Experiment": "GitHub", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_lp.as_dict()},
+            {"Experiment": "GitHub", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_ssl_lp.as_dict()},
             {"Experiment": "GitHub", "Run": run, "Pipeline": "Struct-G Internal Classifier", **structgnn_lp.as_dict()},
             {"Experiment": "GitHub", "Run": run, "Pipeline": "SimpleGAT", **simplegat_lp.as_dict()},
             {"Experiment": "GitHub", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_lp.as_dict()},
@@ -337,7 +337,7 @@ def run_deezer_experiments(edge_path, features_path, target_path, num_runs=5):
         print("\n========== [Deezer] GPT-GNN ==========")
         _, gpt_cls, gpt_lp = run_gpt_gnn_pipeline(data, labels, seed=seed)
         print("\n========== [Deezer] Struct-G Structural Only Pretrain (Node2Vec) ==========")
-        _, _, structgnn_cls, structgnn_lp = run_structg_pipeline(data, labels, seed=seed)
+        _, structgnn_ssl_cls, structgnn_ssl_lp = run_structg_pipeline(data, labels, seed=seed)
         print("\n========== [Deezer] Struct-G Internal Classifier ==========")
         _, structgnn_cls, structgnn_lp = run_structg_pipeline_internal(data, labels, seed=seed, do_linkpred=True)
         print("\n========== [Deezer] SimpleGAT ==========")
@@ -349,7 +349,7 @@ def run_deezer_experiments(edge_path, features_path, target_path, num_runs=5):
             {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_cls.as_dict()},
             {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "Deep GCN", **structural_cls.as_dict()},
             {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "GPT-GNN", **gpt_cls.as_dict()},
-            {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_cls.as_dict()},
+            {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_ssl_cls.as_dict()},
             {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "Struct-G Internal Classifier", **structgnn_cls.as_dict()},
             {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "SimpleGAT", **simplegat_cls.as_dict()},
             {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_cls.as_dict()},
@@ -359,7 +359,7 @@ def run_deezer_experiments(edge_path, features_path, target_path, num_runs=5):
             {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_lp.as_dict()},
             {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "Deep GCN", **structural_lp.as_dict()},
             {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "GPT-GNN", **gpt_lp.as_dict()},
-            {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_lp.as_dict()},
+            {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_ssl_lp.as_dict()},
             {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "Struct-G Internal Classifier", **structgnn_lp.as_dict()},
             {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "SimpleGAT", **simplegat_lp.as_dict()},
             {"Experiment": "Deezer Europe", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_lp.as_dict()},
@@ -391,7 +391,7 @@ def run_twitch_experiments(edge_path, target_path, num_runs=5):
         print("\n========== [Twitch] GPT-GNN ==========")
         _, gpt_cls, gpt_lp = run_gpt_gnn_pipeline(data, labels, seed=seed)
         print("\n========== [Twitch] Struct-G Structural Only Pretrain (Node2Vec) ==========")
-        _, structgnn_cls, structgnn_lp = run_structg_pipeline(data, labels, seed=seed)
+        _, structgnn_ssl_cls, structgnn_ssl_lp = run_structg_pipeline(data, labels, seed=seed)
         print("\n========== [Twitch] Struct-G Internal Classifier ==========")
         _, structgnn_cls, structgnn_lp = run_structg_pipeline_internal(data, labels, seed=seed, do_linkpred=True)
         print("\n========== [Twitch] SimpleGAT ==========")
@@ -403,7 +403,7 @@ def run_twitch_experiments(edge_path, target_path, num_runs=5):
             {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_cls.as_dict()},
             {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "Deep GCN", **structural_cls.as_dict()},
             {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "GPT-GNN", **gpt_cls.as_dict()},
-            {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_cls.as_dict()},
+            {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_ssl_cls.as_dict()},
             {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "Struct-G Internal Classifier", **structgnn_cls.as_dict()},
             {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "SimpleGAT", **simplegat_cls.as_dict()},
             {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_cls.as_dict()},
@@ -413,7 +413,7 @@ def run_twitch_experiments(edge_path, target_path, num_runs=5):
             {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "SimpleGNN", **simplegnn_lp.as_dict()},
             {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "Deep GCN", **structural_lp.as_dict()},
             {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "GPT-GNN", **gpt_lp.as_dict()},
-            {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_lp.as_dict()},
+            {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "Struct-G Structural Only Pretrain", **structgnn_ssl_lp.as_dict()},
             {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "Struct-G", **structgnn_lp.as_dict()},
             {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "SimpleGAT", **simplegat_lp.as_dict()},
             {"Experiment": "Twitch Gamers", "Run": run, "Pipeline": "SimpleGraphSAGE", **graphsage_lp.as_dict()},
@@ -428,84 +428,84 @@ def run_twitch_experiments(edge_path, target_path, num_runs=5):
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
-def run_all_experiments(num_runs=5, output_file="/app/results/experiment_results.xlsx"):
+def run_all_experiments(num_runs=5, output_file="/app/results/experiment_results_v2.xlsx"):
     # Run synthetic experiments
     synthetic_cls, synthetic_lp = run_synthetic_experiments(num_runs=num_runs)
 
-    # # Run Facebook experiments
-    # fb_dir = os.path.join(BASE_DIR, "../datasets/facebook_large")
-    # facebook_cls, facebook_lp = run_facebook_experiments(
-    #     edge_path=os.path.join(fb_dir, "musae_facebook_edges.csv"),
-    #     features_path=os.path.join(fb_dir, "musae_facebook_features.json"),
-    #     target_path=os.path.join(fb_dir, "musae_facebook_target.csv"),
-    #     num_runs=num_runs,
-    # )
-    #
-    # # Run Email-EU-Core experiments
-    # email_dir = os.path.join(BASE_DIR, "../datasets/email-eu-core")
-    # email_cls, email_lp = run_email_eu_core_experiments(
-    #     edge_path=os.path.join(email_dir, "email-Eu-core.txt"),
-    #     label_path=os.path.join(email_dir, "email-Eu-core-department-labels.txt"),
-    #     num_runs=num_runs,
-    # )
-    #
-    # # Run GitHub experiments
-    # github_dir = os.path.join(BASE_DIR, "../datasets/git_web_ml")
-    # github_cls, github_lp = run_github_experiments(
-    #     edge_path=os.path.join(github_dir, "musae_git_edges.csv"),
-    #     features_path=os.path.join(github_dir, "musae_git_features.json"),
-    #     target_path=os.path.join(github_dir, "musae_git_target.csv"),
-    #     num_runs=num_runs,
-    # )
-    #
-    # # Run Deezer Europe experiments
-    # deezer_dir = os.path.join(BASE_DIR, "../datasets/deezer_europe")
-    # deezer_cls, deezer_lp = run_deezer_experiments(
-    #     edge_path=os.path.join(deezer_dir, "deezer_europe_edges.csv"),
-    #     features_path=os.path.join(deezer_dir, "deezer_europe_features.json"),
-    #     target_path=os.path.join(deezer_dir, "deezer_europe_target.csv"),
-    #     num_runs=num_runs,
-    # )
-    #
-    # # Run Twitch Gamers experiments
-    # twitch_dir = os.path.join(BASE_DIR, "../datasets/twitch_gamers")
-    # twitch_cls, twitch_lp = run_twitch_experiments(
-    #     edge_path=os.path.join(twitch_dir, "large_twitch_edges.csv"),
-    #     target_path=os.path.join(twitch_dir, "large_twitch_features.csv"),
-    #     num_runs=num_runs,
-    # )
-    #
-    # # Convert results lists to DataFrames
-    # df_synthetic_cls = pd.DataFrame(synthetic_cls)
-    # df_synthetic_lp = pd.DataFrame(synthetic_lp)
-    # df_facebook_cls = pd.DataFrame(facebook_cls)
-    # df_facebook_lp = pd.DataFrame(facebook_lp)
-    # df_email_cls = pd.DataFrame(email_cls)
-    # df_email_lp = pd.DataFrame(email_lp)
-    # df_github_cls = pd.DataFrame(github_cls)
-    # df_github_lp = pd.DataFrame(github_lp)
-    # df_deezer_cls = pd.DataFrame(deezer_cls)
-    # df_deezer_lp = pd.DataFrame(deezer_lp)
-    # df_twitch_cls = pd.DataFrame(twitch_cls)
-    # df_twitch_lp = pd.DataFrame(twitch_lp)
-    #
-    #
-    # # Save all results to an Excel file with multiple sheets
-    # with pd.ExcelWriter(output_file) as writer:
-    #     df_synthetic_cls.to_excel(writer, sheet_name="Synthetic_Classification", index=False)
-    #     df_synthetic_lp.to_excel(writer, sheet_name="Synthetic_LinkPrediction", index=False)
-    #     df_facebook_cls.to_excel(writer, sheet_name="Facebook_Classification", index=False)
-    #     df_facebook_lp.to_excel(writer, sheet_name="Facebook_LinkPrediction", index=False)
-    #     df_email_cls.to_excel(writer, sheet_name="Email_Classification", index=False)
-    #     df_email_lp.to_excel(writer, sheet_name="Email_LinkPrediction", index=False)
-    #     df_github_cls.to_excel(writer, sheet_name="GitHub_Classification", index=False)
-    #     df_github_lp.to_excel(writer, sheet_name="GitHub_LinkPrediction", index=False)
-    #     df_deezer_cls.to_excel(writer, sheet_name="Deezer_Classification", index=False)
-    #     df_deezer_lp.to_excel(writer, sheet_name="Deezer_LinkPrediction", index=False)
-    #     df_twitch_cls.to_excel(writer, sheet_name="Twitch_Classification", index=False)
-    #     df_twitch_lp.to_excel(writer, sheet_name="Twitch_LinkPrediction", index=False)
-    #
-    # print(f"\nAll experiment results saved to {output_file}")
+    # Run Facebook experiments
+    fb_dir = os.path.join(BASE_DIR, "../datasets/facebook_large")
+    facebook_cls, facebook_lp = run_facebook_experiments(
+        edge_path=os.path.join(fb_dir, "musae_facebook_edges.csv"),
+        features_path=os.path.join(fb_dir, "musae_facebook_features.json"),
+        target_path=os.path.join(fb_dir, "musae_facebook_target.csv"),
+        num_runs=num_runs,
+    )
+
+    # Run Email-EU-Core experiments
+    email_dir = os.path.join(BASE_DIR, "../datasets/email-eu-core")
+    email_cls, email_lp = run_email_eu_core_experiments(
+        edge_path=os.path.join(email_dir, "email-Eu-core.txt"),
+        label_path=os.path.join(email_dir, "email-Eu-core-department-labels.txt"),
+        num_runs=num_runs,
+    )
+
+    # Run GitHub experiments
+    github_dir = os.path.join(BASE_DIR, "../datasets/git_web_ml")
+    github_cls, github_lp = run_github_experiments(
+        edge_path=os.path.join(github_dir, "musae_git_edges.csv"),
+        features_path=os.path.join(github_dir, "musae_git_features.json"),
+        target_path=os.path.join(github_dir, "musae_git_target.csv"),
+        num_runs=num_runs,
+    )
+
+    # Run Deezer Europe experiments
+    deezer_dir = os.path.join(BASE_DIR, "../datasets/deezer_europe")
+    deezer_cls, deezer_lp = run_deezer_experiments(
+        edge_path=os.path.join(deezer_dir, "deezer_europe_edges.csv"),
+        features_path=os.path.join(deezer_dir, "deezer_europe_features.json"),
+        target_path=os.path.join(deezer_dir, "deezer_europe_target.csv"),
+        num_runs=num_runs,
+    )
+
+    # Run Twitch Gamers experiments
+    twitch_dir = os.path.join(BASE_DIR, "../datasets/twitch_gamers")
+    twitch_cls, twitch_lp = run_twitch_experiments(
+        edge_path=os.path.join(twitch_dir, "large_twitch_edges.csv"),
+        target_path=os.path.join(twitch_dir, "large_twitch_features.csv"),
+        num_runs=num_runs,
+    )
+
+    # Convert results lists to DataFrames
+    df_synthetic_cls = pd.DataFrame(synthetic_cls)
+    df_synthetic_lp = pd.DataFrame(synthetic_lp)
+    df_facebook_cls = pd.DataFrame(facebook_cls)
+    df_facebook_lp = pd.DataFrame(facebook_lp)
+    df_email_cls = pd.DataFrame(email_cls)
+    df_email_lp = pd.DataFrame(email_lp)
+    df_github_cls = pd.DataFrame(github_cls)
+    df_github_lp = pd.DataFrame(github_lp)
+    df_deezer_cls = pd.DataFrame(deezer_cls)
+    df_deezer_lp = pd.DataFrame(deezer_lp)
+    df_twitch_cls = pd.DataFrame(twitch_cls)
+    df_twitch_lp = pd.DataFrame(twitch_lp)
+
+
+    # Save all results to an Excel file with multiple sheets
+    with pd.ExcelWriter(output_file) as writer:
+        df_synthetic_cls.to_excel(writer, sheet_name="Synthetic_Classification", index=False)
+        df_synthetic_lp.to_excel(writer, sheet_name="Synthetic_LinkPrediction", index=False)
+        df_facebook_cls.to_excel(writer, sheet_name="Facebook_Classification", index=False)
+        df_facebook_lp.to_excel(writer, sheet_name="Facebook_LinkPrediction", index=False)
+        df_email_cls.to_excel(writer, sheet_name="Email_Classification", index=False)
+        df_email_lp.to_excel(writer, sheet_name="Email_LinkPrediction", index=False)
+        df_github_cls.to_excel(writer, sheet_name="GitHub_Classification", index=False)
+        df_github_lp.to_excel(writer, sheet_name="GitHub_LinkPrediction", index=False)
+        df_deezer_cls.to_excel(writer, sheet_name="Deezer_Classification", index=False)
+        df_deezer_lp.to_excel(writer, sheet_name="Deezer_LinkPrediction", index=False)
+        df_twitch_cls.to_excel(writer, sheet_name="Twitch_Classification", index=False)
+        df_twitch_lp.to_excel(writer, sheet_name="Twitch_LinkPrediction", index=False)
+
+    print(f"\nAll experiment results saved to {output_file}")
 
 
 if __name__ == "__main__":
