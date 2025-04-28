@@ -64,6 +64,7 @@ class StructuralGNN(nn.Module):
             embedding_dim=128,  # Node2Vec embedding size
             num_layers=2,
             use_gat=True,
+            use_gate=True,
             num_classes=None,  # If None, skip classification head
             feat_reconstruction=False
     ):
@@ -93,6 +94,8 @@ class StructuralGNN(nn.Module):
             self.gat_layer = pyg_nn.GATConv(hidden_dim, hidden_dim, heads=2, concat=False)
         else:
             self.gat_layer = None
+
+        self.use_gated_fusion = use_gate
 
         # Final linear to produce "base" embeddings of dimension output_dim
         self.final_sage = pyg_nn.SAGEConv(hidden_dim, output_dim)
@@ -147,16 +150,18 @@ class StructuralGNN(nn.Module):
         node2vec_emb_proj = self.node2vec_proj(node2vec_emb)
         combined = torch.cat([x[node_indices], node2vec_emb_proj], dim=-1)
 
-        gate_weights = self.gate(combined)
-        x_proj = self.input_proj(combined)
-        # Gating
-        raw_x = x[node_indices]
-        raw_proj = self.input_proj(torch.cat([
-            raw_x,
-            torch.zeros(raw_x.size(0), self.node2vec_proj.out_features, device=raw_x.device)
-        ], dim=-1))
-
-        gated_x = gate_weights * x_proj + (1 - gate_weights) * raw_proj
+        if self.use_gate:
+            gate_weights = self.gate(combined)
+            x_proj = self.input_proj(combined)
+            raw_x = x[node_indices]
+            raw_proj = self.input_proj(torch.cat([
+                raw_x,
+                torch.zeros(raw_x.size(0), self.node2vec_proj.out_features, device=raw_x.device)
+            ], dim=-1))
+            gated_x = gate_weights * x_proj + (1 - gate_weights) * raw_proj
+        else:
+            # No gating: simple input projection
+            gated_x = self.input_proj(combined)
 
         # 3) We need a "full" representation for all nodes. We'll put gated_x
         #    back into the correct shape if node_indices is a subset.

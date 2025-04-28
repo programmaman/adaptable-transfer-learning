@@ -1,5 +1,6 @@
-import time
 import random
+import time
+
 import numpy as np
 import torch
 from sklearn.metrics import (
@@ -54,9 +55,18 @@ def create_masks(num_nodes: int, train_ratio: float = 0.6, val_ratio: float = 0.
 # ------------------------
 # Model Initialization
 # ------------------------
-def init_structural_gnn(data, hidden_dim: int, output_dim: int,
-                        embedding_dim: int, num_layers: int, do_featrec: bool,
-                        device, num_classes: int = None):
+def init_structural_gnn(
+        data,
+        hidden_dim: int,
+        output_dim: int,
+        embedding_dim: int,
+        num_layers: int,
+        do_featrec: bool,
+        device,
+        num_classes: int = None,
+        use_gate: bool = True,
+        use_gat: bool = True
+):
     """
     Initializes the StructuralGNN model.
 
@@ -68,6 +78,9 @@ def init_structural_gnn(data, hidden_dim: int, output_dim: int,
         num_layers: Number of layers.
         do_featrec: Whether to include feature reconstruction.
         device: Computation device.
+        num_classes: Number of classes for classification head.
+        use_gate: Whether to use the input gating mechanism.
+        use_gat: Whether to use GAT final layer.
 
     Returns:
         model: An instance of StructuralGNN moved to device.
@@ -81,7 +94,8 @@ def init_structural_gnn(data, hidden_dim: int, output_dim: int,
         output_dim=output_dim,
         embedding_dim=embedding_dim,
         num_layers=num_layers,
-        use_gat=True,
+        use_gat=use_gat,
+        use_gate=use_gate,
         num_classes=num_classes,
         feat_reconstruction=do_featrec
     ).to(device)
@@ -175,6 +189,7 @@ def pretrain_full_model(
 
     return model, classifier
 
+
 def copy_model_weights(from_model, to_model):
     print("Copying weights from pre-trained model to new model...")
     to_model.load_state_dict(from_model.state_dict(), strict=False)
@@ -203,6 +218,7 @@ def pretrain_ssl_only(model, data, epochs, device, do_linkpred=True, do_n2v_alig
             print(f"[Epoch {epoch:03d}] SSL Loss: {loss.item():.4f}")
 
     return model
+
 
 # ------------------------
 # Evaluation Functions
@@ -244,7 +260,6 @@ def evaluate_classification(model, data, labels, mask, device, verbose: bool = T
         auc=auc,
         preds=preds
     )
-
 
 
 def evaluate_link_prediction(model, data, rem_edge_list, device) -> EvaluationResult:
@@ -415,6 +430,8 @@ def run_structg_pipeline(
         do_linkpred: bool = True,
         do_n2v_align: bool = True,
         do_featrec: bool = True,
+        use_gate: bool = True,  # <-- NEW
+        use_gat: bool = True,  # <-- NEW
         seed: int = 42,
         num_classes: int = None,
 ):
@@ -436,8 +453,18 @@ def run_structg_pipeline(
 
     # Model with classification head
     num_classes = labels.unique().numel() if num_classes is None else num_classes
-    model = init_structural_gnn(data, hidden_dim, output_dim, embedding_dim, num_layers,
-                                 do_featrec, device, num_classes=num_classes)
+    model = init_structural_gnn(
+        data,
+        hidden_dim,
+        output_dim,
+        embedding_dim,
+        num_layers,
+        do_featrec,
+        device,
+        num_classes=num_classes,
+        use_gate=use_gate,
+        use_gat=use_gat
+    )
 
     # === Phase 1: Pretrain Node2Vec ===
     model = pretrain_node2vec(model, node2vec_pretrain_epochs=pretrain_epochs, batch_size=128, lr=0.01, verbose=True)
@@ -483,6 +510,3 @@ def run_structg_pipeline(
         })
 
     return model, classifier_results, lp_results
-
-
-

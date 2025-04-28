@@ -1,5 +1,5 @@
-import time
 import random
+
 import numpy as np
 import torch
 from sklearn.metrics import (
@@ -7,7 +7,7 @@ from sklearn.metrics import (
     roc_auc_score, average_precision_score
 )
 
-from experiments.experiment_utils import sample_negative_edges, split_edges_for_link_prediction, EvaluationResult
+from experiments.experiment_utils import sample_negative_edges, EvaluationResult
 from utils import get_device
 
 
@@ -54,9 +54,18 @@ def create_masks(num_nodes: int, train_ratio: float = 0.6, val_ratio: float = 0.
 # ------------------------
 # Model Initialization
 # ------------------------
-def init_structural_gnn(data, hidden_dim: int, output_dim: int,
-                        embedding_dim: int, num_layers: int, do_featrec: bool,
-                        device, num_classes: int = None):
+def init_structural_gnn(
+        data,
+        hidden_dim: int,
+        output_dim: int,
+        embedding_dim: int,
+        num_layers: int,
+        do_featrec: bool,
+        device,
+        num_classes: int = None,
+        use_gate: bool = True,
+        use_gat: bool = True
+):
     """
     Initializes the StructuralGNN model.
 
@@ -68,6 +77,9 @@ def init_structural_gnn(data, hidden_dim: int, output_dim: int,
         num_layers: Number of layers.
         do_featrec: Whether to include feature reconstruction.
         device: Computation device.
+        num_classes: Number of classes for classification head.
+        use_gate: Whether to use the input gating mechanism.
+        use_gat: Whether to use GAT final layer.
 
     Returns:
         model: An instance of StructuralGNN moved to device.
@@ -81,7 +93,8 @@ def init_structural_gnn(data, hidden_dim: int, output_dim: int,
         output_dim=output_dim,
         embedding_dim=embedding_dim,
         num_layers=num_layers,
-        use_gat=True,
+        use_gat=use_gat,
+        use_gate=use_gate,
         num_classes=num_classes,
         feat_reconstruction=do_featrec
     ).to(device)
@@ -121,8 +134,8 @@ def pretrain_node2vec(model, node2vec_pretrain_epochs: int, batch_size: int = 12
 # Phase 2: Full Pre-training with Self-Supervision
 # ------------------------
 def pretrain_full_model_internal(
-    model, data, labels, train_mask, full_pretrain_epochs,
-    do_linkpred, do_n2v_align, do_featrec, device, log_every=10
+        model, data, labels, train_mask, full_pretrain_epochs,
+        do_linkpred, do_n2v_align, do_featrec, device, log_every=10
 ):
     print("\n=== Phase 2: Pre-training Structural GNN (with internal classifier) ===")
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
@@ -191,6 +204,7 @@ def evaluate_classification_internal(model, data, labels, mask, device, verbose=
     return EvaluationResult(
         accuracy=acc, precision=precision, recall=recall, f1=f1, auc=auc, preds=preds
     )
+
 
 def evaluate_link_prediction(model, data, rem_edge_list, device) -> EvaluationResult:
     """
@@ -347,18 +361,20 @@ def finetune_link_prediction(
 # Main Pipeline Function
 # ------------------------
 def run_structg_pipeline_internal(
-    data,
-    labels,
-    hidden_dim: int = 64,
-    output_dim: int = 32,
-    embedding_dim: int = 128,
-    num_layers: int = 2,
-    pretrain_epochs: int = 100,
-    finetune_epochs: int = 30,
-    do_linkpred: bool = True,
-    do_n2v_align: bool = True,
-    do_featrec: bool = False,
-    seed: int = 42,
+        data,
+        labels,
+        hidden_dim: int = 64,
+        output_dim: int = 32,
+        embedding_dim: int = 128,
+        num_layers: int = 2,
+        pretrain_epochs: int = 100,
+        finetune_epochs: int = 30,
+        do_linkpred: bool = True,
+        do_n2v_align: bool = True,
+        do_featrec: bool = False,
+        use_gate: bool = True,
+        use_gat: bool = True,
+        seed: int = 42,
 ):
     import time
     from utils import get_device
@@ -384,8 +400,16 @@ def run_structg_pipeline_internal(
 
     # Initialize model with internal classifier
     model = init_structural_gnn(
-        data, hidden_dim, output_dim, embedding_dim, num_layers, do_featrec,
-        device, num_classes=num_classes
+        data,
+        hidden_dim,
+        output_dim,
+        embedding_dim,
+        num_layers,
+        do_featrec,
+        device,
+        num_classes=num_classes,
+        use_gate=use_gate,
+        use_gat=use_gat
     )
 
     start_time = time.time()
@@ -440,5 +464,3 @@ def run_structg_pipeline_internal(
         })
 
     return model, classifier_results, lp_results
-
-

@@ -1,21 +1,26 @@
-import os
-import torch
 import json
-import numpy as np
+import os
+
 import matplotlib.pyplot as plt
+import torch
 from sklearn.manifold import TSNE
-from torch_geometric.utils import to_networkx
-from experiments.struct_g_pipeline import run_structg_pipeline
+
+from experiments.experiment_utils import load_musae_facebook_dataset
 
 # ---------------------------
 # Ablation Configurations
 # ---------------------------
 ABLATION_MODES = {
-    'full':         dict(do_linkpred=True,  do_n2v_align=True,  do_featrec=True),
-    'no_align':     dict(do_linkpred=True,  do_n2v_align=False, do_featrec=True),
-    'no_linkpred':  dict(do_linkpred=False, do_n2v_align=True,  do_featrec=True),
-    'no_featrec':   dict(do_linkpred=True,  do_n2v_align=True,  do_featrec=False),
-    'no_ssl':       dict(do_linkpred=False, do_n2v_align=False, do_featrec=False),
+    'full': dict(do_linkpred=True, do_n2v_align=True, do_featrec=True, do_classification=True),
+    'no_align': dict(do_linkpred=True, do_n2v_align=False, do_featrec=True, do_classification=True),
+    'no_linkpred': dict(do_linkpred=False, do_n2v_align=True, do_featrec=True, do_classification=True),
+    'no_featrec': dict(do_linkpred=True, do_n2v_align=True, do_featrec=False, do_classification=True),
+    'no_ssl': dict(do_linkpred=False, do_n2v_align=False, do_featrec=False, do_classification=True),
+    'no_classification': dict(do_linkpred=True, do_n2v_align=True, do_featrec=True, do_classification=False),
+    # Architecture ablations:
+    'no_gat': dict(do_linkpred=True, do_n2v_align=True, do_featrec=True, do_classification=True, use_gat=False),
+    'shallow_gnn': dict(do_linkpred=True, do_n2v_align=True, do_featrec=True, do_classification=True, num_layers=1),
+    'no_gate': dict(do_linkpred=True, do_n2v_align=True, do_featrec=True, do_classification=True, use_gate=False),
 }
 
 
@@ -26,8 +31,10 @@ def save_metrics(metrics, out_dir):
     with open(os.path.join(out_dir, "metrics.json"), "w") as f:
         json.dump(metrics, f, indent=2)
 
+
 def save_embeddings(embeddings, name, out_dir):
     torch.save(embeddings, os.path.join(out_dir, f"{name}.pt"))
+
 
 def plot_tsne(embeddings, labels, out_dir):
     tsne = TSNE(n_components=2, perplexity=30, n_iter=1000)
@@ -44,21 +51,49 @@ def plot_tsne(embeddings, labels, out_dir):
 # ---------------------------
 # Main Runner
 # ---------------------------
+from experiments.struct_g_internal_pipeline import run_structg_pipeline_internal
+from experiments.struct_g_pipeline import run_structg_pipeline
+
+
 def run_analysis_on_graph(name, data, labels, base_output_dir="results", seed=42):
-    for mode, cfg in ABLATION_MODES.items():
+    for mode, mode_cfg in ABLATION_MODES.items():
         print(f"\n[Running {mode}] on {name}")
         out_dir = os.path.join(base_output_dir, f"{name}_{mode}")
         os.makedirs(out_dir, exist_ok=True)
 
-        model, _, clf_res, lp_res = run_structg_pipeline(
-            data=data,
-            labels=labels,
-            seed=seed,
-            pretrain_epochs=30,
-            finetune_epochs=15,
-            num_classes=int(labels.max().item() + 1),
-            **cfg
-        )
+        cfg = mode_cfg.copy()
+        do_classification = cfg.pop("do_classification", True)
+
+        # NEW: extract optional overrides (and remove from cfg to avoid double-passing)
+        use_gate = cfg.pop("use_gate", True)
+        use_gat = cfg.pop("use_gat", True)
+        num_layers = cfg.pop("num_layers", 2)
+
+        if do_classification:
+            model, clf_res, lp_res = run_structg_pipeline_internal(
+                data=data,
+                labels=labels,
+                seed=seed,
+                pretrain_epochs=100,
+                finetune_epochs=30,
+                use_gate=use_gate,  # <-- pass explicitly
+                use_gat=use_gat,  # <-- pass explicitly
+                num_layers=num_layers,  # <-- pass explicitly
+                **cfg
+            )
+        else:
+            model, clf_res, lp_res = run_structg_pipeline(
+                data=data,
+                labels=labels,
+                seed=seed,
+                pretrain_epochs=100,
+                finetune_epochs=30,
+                num_classes=None,  # force no classifier
+                use_gate=use_gate,  # <-- pass explicitly
+                use_gat=use_gat,  # <-- pass explicitly
+                num_layers=num_layers,  # <-- pass explicitly
+                **cfg
+            )
 
         with torch.no_grad():
             node_idx = torch.arange(data.num_nodes).to(labels.device)
@@ -69,25 +104,23 @@ def run_analysis_on_graph(name, data, labels, base_output_dir="results", seed=42
         save_embeddings(z_n2v, "z_n2v", out_dir)
 
         save_metrics({
-            "classification": clf_res.to_dict(),
+            "classification": clf_res.to_dict() if clf_res else None,
             "link_prediction": lp_res.to_dict() if lp_res else None
         }, out_dir)
 
-        plot_tsne(e_v, labels, out_dir)
+        if do_classification and clf_res:
+            plot_tsne(e_v, labels, out_dir)
 
 
 # ---------------------------
 # Example Usage
 # ---------------------------
 if __name__ == "__main__":
-    from experiments.synthetic_generator import generate_synthetic_graph
-
-    config = {
-        'homophily': 0.5,
-        'clustering': 0.2,
-        'diameter': 5,
-        'assortativity': 0.0,
-        'density': 0.01,
-    }
-    data = generate_synthetic_graph(config)
-    run_analysis_on_graph("synthetic1", data, data.y)
+    # Load Facebook graph (or other)
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    fb_dir = os.path.join(BASE_DIR, "../datasets/facebook_large")
+    edge_path = os.path.join(fb_dir, "musae_facebook_edges.csv")
+    features_path = os.path.join(fb_dir, "musae_facebook_features.json")
+    target_path = os.path.join(fb_dir, "musae_facebook_target.csv")
+    data, labels, _ = load_musae_facebook_dataset(edge_path, features_path, target_path)
+    run_analysis_on_graph("facebook", data, labels)
