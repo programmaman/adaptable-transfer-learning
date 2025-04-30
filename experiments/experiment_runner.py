@@ -376,7 +376,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 def run_all_experiments(num_runs=5,
-                        output_file="/app/results/experiment_results_v2.xlsx"):
+                        output_file="/app/results/experiment_results_dummy.xlsx"):
     # Open the Excel writer up front:
     with pd.ExcelWriter(output_file, engine="openpyxl") as writer:
 

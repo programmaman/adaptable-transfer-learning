@@ -96,7 +96,12 @@ def run_analysis_on_graph(name, data, labels, base_output_dir="results", seed=42
             )
 
         with torch.no_grad():
-            node_idx = torch.arange(data.num_nodes).to(labels.device)
+            # Ensure all data and model inputs are on the same device
+            device = next(model.parameters()).device
+            data = data.to(device)
+            labels = labels.to(device)
+
+            node_idx = torch.arange(data.num_nodes, device=device)
             e_v = model(data.x, data.edge_index, node_idx)
             z_n2v = model.node2vec_layer(node_idx)
 
