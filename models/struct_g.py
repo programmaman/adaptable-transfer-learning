@@ -95,7 +95,7 @@ class StructuralGNN(nn.Module):
         else:
             self.gat_layer = None
 
-        self.use_gated_fusion = use_gate
+        self.use_gate = use_gate
 
         # Final linear to produce "base" embeddings of dimension output_dim
         self.final_sage = pyg_nn.SAGEConv(hidden_dim, output_dim)
