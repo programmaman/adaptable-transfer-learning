@@ -148,6 +148,7 @@ class StructuralGNN(nn.Module):
 
         # 2) Project node2vec and combine with raw x
         node2vec_emb_proj = self.node2vec_proj(node2vec_emb)
+        x = x.to(node2vec_emb_proj.device)
         combined = torch.cat([x[node_indices], node2vec_emb_proj], dim=-1)
 
         if self.use_gate:
