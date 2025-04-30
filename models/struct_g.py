@@ -140,7 +140,7 @@ class StructuralGNN(nn.Module):
         """
         if node_indices is None:
             node_indices = torch.arange(x.size(0), device=x.device)
-
+        device = next(self.parameters()).device
         # 1) Node2Vec structural embeddings
         with torch.no_grad():
             # Freeze Node2Vec after pretraining, or remove no_grad if you want to fine-tune
@@ -149,6 +149,7 @@ class StructuralGNN(nn.Module):
         # 2) Project node2vec and combine with raw x
         node2vec_emb_proj = self.node2vec_proj(node2vec_emb)
         x = x.to(node2vec_emb_proj.device)
+        edge_index = edge_index.to(device)
         combined = torch.cat([x[node_indices], node2vec_emb_proj], dim=-1)
 
         if self.use_gate:
