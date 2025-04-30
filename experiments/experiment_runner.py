@@ -375,73 +375,88 @@ def run_deezer_experiments(edge_path, features_path, target_path, num_runs=5):
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
-def run_all_experiments(num_runs=5, output_file="/app/results/experiment_results_v2.xlsx"):
-    # Run synthetic experiments
-    synthetic_cls, synthetic_lp = run_synthetic_experiments(num_runs=num_runs)
+def run_all_experiments(num_runs=5,
+                        output_file="/app/results/experiment_results_v2.xlsx"):
+    # Open the Excel writer up front:
+    with pd.ExcelWriter(output_file, engine="openpyxl") as writer:
 
-    # Run Facebook experiments
-    fb_dir = os.path.join(BASE_DIR, "../datasets/facebook_large")
-    facebook_cls, facebook_lp = run_facebook_experiments(
-        edge_path=os.path.join(fb_dir, "musae_facebook_edges.csv"),
-        features_path=os.path.join(fb_dir, "musae_facebook_features.json"),
-        target_path=os.path.join(fb_dir, "musae_facebook_target.csv"),
-        num_runs=num_runs,
-    )
+        # 1) Synthetic
+        synth_cls, synth_lp = run_synthetic_experiments(num_runs)
+        pd.DataFrame(synth_cls).to_excel(
+            writer, sheet_name="Synthetic_Classification", index=False
+        )
+        pd.DataFrame(synth_lp).to_excel(
+            writer, sheet_name="Synthetic_LinkPrediction", index=False
+        )
+        # drop refs so memory can be freed
+        del synth_cls, synth_lp
 
-    # Run Email-EU-Core experiments
-    email_dir = os.path.join(BASE_DIR, "../datasets/email-eu-core")
-    email_cls, email_lp = run_email_eu_core_experiments(
-        edge_path=os.path.join(email_dir, "email-Eu-core.txt"),
-        label_path=os.path.join(email_dir, "email-Eu-core-department-labels.txt"),
-        num_runs=num_runs,
-    )
+        # 2) Facebook
+        fb_dir = os.path.join(BASE_DIR, "../datasets/facebook_large")
+        fb_cls, fb_lp = run_facebook_experiments(
+            edge_path=os.path.join(fb_dir, "musae_facebook_edges.csv"),
+            features_path=os.path.join(fb_dir, "musae_facebook_features.json"),
+            target_path=os.path.join(fb_dir, "musae_facebook_target.csv"),
+            num_runs=num_runs,
+        )
+        pd.DataFrame(fb_cls).to_excel(
+            writer, sheet_name="Facebook_Classification", index=False
+        )
+        pd.DataFrame(fb_lp).to_excel(
+            writer, sheet_name="Facebook_LinkPrediction", index=False
+        )
+        del fb_cls, fb_lp
 
-    # Run GitHub experiments
-    github_dir = os.path.join(BASE_DIR, "../datasets/git_web_ml")
-    github_cls, github_lp = run_github_experiments(
-        edge_path=os.path.join(github_dir, "musae_git_edges.csv"),
-        features_path=os.path.join(github_dir, "musae_git_features.json"),
-        target_path=os.path.join(github_dir, "musae_git_target.csv"),
-        num_runs=num_runs,
-    )
+        # 3) Email-EU-Core
+        email_dir = os.path.join(BASE_DIR, "../datasets/email-eu-core")
+        email_cls, email_lp = run_email_eu_core_experiments(
+            edge_path=os.path.join(email_dir, "email-Eu-core.txt"),
+            label_path=os.path.join(email_dir, "email-Eu-core-department-labels.txt"),
+            num_runs=num_runs,
+        )
+        pd.DataFrame(email_cls).to_excel(
+            writer, sheet_name="Email_Classification", index=False
+        )
+        pd.DataFrame(email_lp).to_excel(
+            writer, sheet_name="Email_LinkPrediction", index=False
+        )
+        del email_cls, email_lp
 
-    # Run Deezer Europe experiments
-    deezer_dir = os.path.join(BASE_DIR, "../datasets/deezer_europe")
-    deezer_cls, deezer_lp = run_deezer_experiments(
-        edge_path=os.path.join(deezer_dir, "deezer_europe_edges.csv"),
-        features_path=os.path.join(deezer_dir, "deezer_europe_features.json"),
-        target_path=os.path.join(deezer_dir, "deezer_europe_target.csv"),
-        num_runs=num_runs,
-    )
+        # 4) GitHub
+        github_dir = os.path.join(BASE_DIR, "../datasets/git_web_ml")
+        gh_cls, gh_lp = run_github_experiments(
+            edge_path=os.path.join(github_dir, "musae_git_edges.csv"),
+            features_path=os.path.join(github_dir, "musae_git_features.json"),
+            target_path=os.path.join(github_dir, "musae_git_target.csv"),
+            num_runs=num_runs,
+        )
+        pd.DataFrame(gh_cls).to_excel(
+            writer, sheet_name="GitHub_Classification", index=False
+        )
+        pd.DataFrame(gh_lp).to_excel(
+            writer, sheet_name="GitHub_LinkPrediction", index=False
+        )
+        del gh_cls, gh_lp
 
-    # Convert results lists to DataFrames
-    df_synthetic_cls = pd.DataFrame(synthetic_cls)
-    df_synthetic_lp = pd.DataFrame(synthetic_lp)
-    df_facebook_cls = pd.DataFrame(facebook_cls)
-    df_facebook_lp = pd.DataFrame(facebook_lp)
-    df_email_cls = pd.DataFrame(email_cls)
-    df_email_lp = pd.DataFrame(email_lp)
-    df_github_cls = pd.DataFrame(github_cls)
-    df_github_lp = pd.DataFrame(github_lp)
-    df_deezer_cls = pd.DataFrame(deezer_cls)
-    df_deezer_lp = pd.DataFrame(deezer_lp)
+        # 5) Deezer
+        deezer_dir = os.path.join(BASE_DIR, "../datasets/deezer_europe")
+        dz_cls, dz_lp = run_deezer_experiments(
+            edge_path=os.path.join(deezer_dir, "deezer_europe_edges.csv"),
+            features_path=os.path.join(deezer_dir, "deezer_europe_features.json"),
+            target_path=os.path.join(deezer_dir, "deezer_europe_target.csv"),
+            num_runs=num_runs,
+        )
+        pd.DataFrame(dz_cls).to_excel(
+            writer, sheet_name="Deezer_Classification", index=False
+        )
+        pd.DataFrame(dz_lp).to_excel(
+            writer, sheet_name="Deezer_LinkPrediction", index=False
+        )
+        del dz_cls, dz_lp
 
-    # Save all results to an Excel file with multiple sheets
-    with pd.ExcelWriter(output_file) as writer:
-        df_synthetic_cls.to_excel(writer, sheet_name="Synthetic_Classification", index=False)
-        df_synthetic_lp.to_excel(writer, sheet_name="Synthetic_LinkPrediction", index=False)
-        df_facebook_cls.to_excel(writer, sheet_name="Facebook_Classification", index=False)
-        df_facebook_lp.to_excel(writer, sheet_name="Facebook_LinkPrediction", index=False)
-        df_email_cls.to_excel(writer, sheet_name="Email_Classification", index=False)
-        df_email_lp.to_excel(writer, sheet_name="Email_LinkPrediction", index=False)
-        df_github_cls.to_excel(writer, sheet_name="GitHub_Classification", index=False)
-        df_github_lp.to_excel(writer, sheet_name="GitHub_LinkPrediction", index=False)
-        df_deezer_cls.to_excel(writer, sheet_name="Deezer_Classification", index=False)
-        df_deezer_lp.to_excel(writer, sheet_name="Deezer_LinkPrediction", index=False)
-
+        # when the 'with' block ends, writer.save() is implicitly called
     print(f"\nAll experiment results saved to {output_file}")
 
 
 if __name__ == "__main__":
-    # Adjust num_runs as needed
     run_all_experiments(num_runs=5)
