@@ -6,6 +6,7 @@ import torch
 from sklearn.manifold import TSNE
 
 from experiments.experiment_utils import load_musae_facebook_dataset
+from utils import get_device
 
 # ---------------------------
 # Ablation Configurations
@@ -69,6 +70,11 @@ def run_analysis_on_graph(name, data, labels, base_output_dir="results", seed=42
         use_gat = cfg.pop("use_gat", True)
         num_layers = cfg.pop("num_layers", 2)
 
+        # Ensure all data and model inputs are on the same device
+        device = get_device()
+        data = data.to(device)
+        labels = labels.to(device)
+
         if do_classification:
             model, clf_res, lp_res = run_structg_pipeline_internal(
                 data=data,
@@ -96,11 +102,6 @@ def run_analysis_on_graph(name, data, labels, base_output_dir="results", seed=42
             )
 
         with torch.no_grad():
-            # Ensure all data and model inputs are on the same device
-            device = next(model.parameters()).device
-            data = data.to(device)
-            labels = labels.to(device)
-
             node_idx = torch.arange(data.num_nodes, device=device)
             e_v = model(data.x, data.edge_index, node_idx)
             z_n2v = model.node2vec_layer(node_idx)
@@ -109,8 +110,8 @@ def run_analysis_on_graph(name, data, labels, base_output_dir="results", seed=42
         save_embeddings(z_n2v, "z_n2v", out_dir)
 
         save_metrics({
-            "classification": clf_res.to_dict() if clf_res else None,
-            "link_prediction": lp_res.to_dict() if lp_res else None
+            "classification": clf_res.as_dict() if clf_res else None,
+            "link_prediction": lp_res.as_dict() if lp_res else None
         }, out_dir)
 
         if do_classification and clf_res:
