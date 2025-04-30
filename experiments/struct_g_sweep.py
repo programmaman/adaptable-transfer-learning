@@ -11,6 +11,9 @@ from sklearn.preprocessing import LabelEncoder
 from torch_geometric.utils import from_networkx
 from tqdm import tqdm
 
+from experiments.struct_g_internal_pipeline import run_structg_pipeline_internal
+from experiments.struct_g_pipeline import run_structg_pipeline
+
 # --- Sweep Configuration ---
 CONFIG_SPACE = {
     'num_nodes': [200, 500, 1000],  # Vary graph size explicitly
@@ -24,10 +27,6 @@ CONFIG_SPACE = {
 LABEL_NOISE = 0.33
 MAX_CLUSTERING_ITERS = 300
 FAST_MODE = False  # If True: skips rewiring/diameter mods for speed
-
-# --- Pipeline Imports ---
-from pipeline_1 import run_structg_pipeline_internal
-from pipeline_2 import run_structg_pipeline as run_structg_pipeline_external
 
 
 # --- Graph Utilities ---
@@ -130,7 +129,7 @@ def run_structural_sweep(debug=False):
             )
 
             # --- Run External Classifier Pipeline ---
-            _, ext_cls, ext_lp = run_structg_pipeline_external(
+            _, ext_cls, ext_lp = run_structg_pipeline(
                 data=graph_data.clone(),
                 labels=labels.clone(),
                 do_linkpred=True,
