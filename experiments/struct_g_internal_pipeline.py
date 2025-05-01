@@ -50,6 +50,27 @@ def create_masks(num_nodes: int, train_ratio: float = 0.6, val_ratio: float = 0.
 
     return train_mask, val_mask, test_mask
 
+from torch_geometric.utils import subgraph
+
+def create_train_subgraph(data, train_mask, labels=None):
+    """
+    Creates a subgraph containing only the training nodes and their edges.
+    Optionally also subsets the labels.
+    """
+    train_nodes = train_mask.nonzero(as_tuple=True)[0]
+    edge_index_sub, _ = edge_index_sub, _ = subgraph(train_nodes, data.edge_index, relabel_nodes=True, num_nodes=data.num_nodes)
+
+
+    data_sub = type(data)()
+    data_sub.edge_index = edge_index_sub
+    data_sub.x = data.x[train_nodes]
+    data_sub.num_nodes = train_nodes.size(0)
+    data_sub.train_node_idx = torch.arange(data_sub.num_nodes)
+
+    if labels is not None:
+        data_sub.y = labels[train_nodes]
+
+    return data_sub
 
 # ------------------------
 # Model Initialization
@@ -140,9 +161,6 @@ def pretrain_full_model_internal(
     print("\n=== Phase 2: Pre-training Structural GNN (with internal classifier) ===")
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
 
-    # Attach labels to data so model can use them internally
-    data.y = labels.to(device)
-
     for epoch in range(full_pretrain_epochs):
         model.train()
         optimizer.zero_grad()
@@ -154,7 +172,7 @@ def pretrain_full_model_internal(
             do_linkpred=do_linkpred,
             do_featrec=do_featrec,
             do_n2v_align=do_n2v_align,
-            train_mask=train_mask,
+            train_mask=None,
         )
         total_loss.backward()
         optimizer.step()
@@ -370,7 +388,7 @@ def run_structg_pipeline_internal(
         pretrain_epochs: int = 100,
         finetune_epochs: int = 30,
         do_linkpred: bool = True,
-        do_n2v_align: bool = True,
+        do_n2v_align: bool = False,
         do_featrec: bool = False,
         use_gate: bool = True,
         use_gat: bool = True,
@@ -393,6 +411,9 @@ def run_structg_pipeline_internal(
 
     # Attach labels to data for internal use
     data.y = labels.to(device)
+
+    # Create subgraph for training
+    data_sub = create_train_subgraph(data, train_mask, labels)
 
     # Edge splitting for link prediction
     data.edge_index, rem_edge_list = split_edges_for_link_prediction(data.edge_index, removal_ratio=0.3)
@@ -419,7 +440,7 @@ def run_structg_pipeline_internal(
 
     # Phase 2: SSL + classification (internal classifier)
     model = pretrain_full_model_internal(
-        model, data, labels, train_mask, pretrain_epochs,
+        model, data_sub, labels, train_mask, pretrain_epochs,
         do_linkpred, do_n2v_align, do_featrec, device, log_every=10
     )
 

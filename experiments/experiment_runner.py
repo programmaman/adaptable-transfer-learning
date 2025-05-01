@@ -91,7 +91,7 @@ def run_synthetic_experiments(num_runs=5):
 
         # Struct-G Structural Only Pretrain (Node2Vec)
         print("\n========== [Synthetic] Struct-G Structural Only Pretrain (Node2Vec) ==========")
-        _, structgnn_ssl_cls, structgnn_ssl_lp = run_structg_pipeline(data, labels, seed=seed)
+        _, structgnn_ssl_cls, structgnn_ssl_lp = run_structg_pipeline(data, labels, seed=seed, do_linkpred=True)
 
         #Struct-G Internal Classifier
         print("\n========== [Synthetic] Struct-G Internal Classifier ==========")

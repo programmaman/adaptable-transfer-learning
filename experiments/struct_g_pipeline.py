@@ -428,7 +428,7 @@ def run_structg_pipeline(
         pretrain_epochs: int = 100,
         finetune_epochs: int = 30,
         do_linkpred: bool = True,
-        do_n2v_align: bool = True,
+        do_n2v_align: bool = False,
         do_featrec: bool = True,
         use_gate: bool = True,  # <-- NEW
         use_gat: bool = True,  # <-- NEW
