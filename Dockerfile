@@ -5,4 +5,4 @@ COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . /app
 ENV PYTHONPATH="/app"
-CMD ["python", "experiments/struct_g_analysis.py"]
+CMD ["python", "experiments/no_align_isolated_experiment.py"]
