@@ -467,11 +467,14 @@ def run_structg_pipeline(
     )
 
     # === Phase 1: Pretrain Node2Vec ===
+    pretrain_start_time = time.time()
     model = pretrain_node2vec(model, node2vec_pretrain_epochs=pretrain_epochs, batch_size=128, lr=0.01, verbose=True)
+    pretrain_time = time.time() - pretrain_start_time
 
     # === Phase 2: Fine-tuning for Classification ===
-    start_time = time.time()
+    fine_tune_start_time = time.time()
     model = finetune_classification(model, data, labels, train_mask, finetune_epochs, device, log_every=10)
+    finetune_time = time.time() - fine_tune_start_time
 
     # === Evaluation ===
     classifier_evaluation_start_time = time.time()
@@ -481,7 +484,9 @@ def run_structg_pipeline(
     # === Optional Link Prediction Fine-tune ===
     if do_linkpred:
         print("\n=== Fine-tuning and evaluating for link prediction ===")
+        link_pred_start_time = time.time()
         model = finetune_link_prediction(model, data, rem_edge_list, finetune_epochs, device=device)
+        link_pred_time = time.time() - link_pred_start_time
 
         lp_evaluation_start_time = time.time()
         lp_results = evaluate_link_prediction(model, data, rem_edge_list, device)
@@ -489,9 +494,10 @@ def run_structg_pipeline(
     else:
         lp_results = None
         lp_evaluation_time = 0
+        link_pred_time = 0
 
     # Total Time
-    total_time = time.time() - start_time - classifier_evaluation_time - lp_evaluation_time
+    total_time = time.time() - fine_tune_start_time - classifier_evaluation_time - lp_evaluation_time
     print(f"\n→ Total Training Time (excluding eval): {total_time:.2f} seconds")
 
     # Metadata
@@ -504,7 +510,9 @@ def run_structg_pipeline(
     if lp_results:
         lp_results.metadata.update({
             "seed": seed,
-            "train_time": total_time,
+            "pretrain_time": pretrain_time,
+            "finetune_time": finetune_time,
+            "link_pred_time": link_pred_time,
             "device": str(device),
             "model": "StructuralGNN"
         })

@@ -256,8 +256,8 @@ def run_graphsage_pipeline(data, labels,
 
     pre_model, class_model = initialize_models(in_dim, num_classes, device)
 
-    pre_model = pretrain(pre_model, data, epochs=pretrain_epochs)
-    evaluate_pretrain(pre_model, data)
+    # pre_model = pretrain(pre_model, data, epochs=pretrain_epochs) #No Pretrain because it muddies the experiment argument
+    # evaluate_pretrain(pre_model, data)
 
     class_model = fine_tune(class_model, pre_model, data, labels, epochs=finetune_epochs)
 

@@ -149,10 +149,14 @@ def run_structural_gcn_pipeline(data, labels, hidden_dim=64, mid_dim=32, pretrai
     data.test_mask = test_mask
 
     in_dim = data.x.size(1)
+    pretrain_start_time = time.time()
     pretrain_model = StructuralGcn(in_channels=in_dim, hidden_channels=hidden_dim, mid_channels=mid_dim)
     pretrain_model = train_structural_feature_predictor(pretrain_model, data, epochs=pretrain_epochs, device=device)
+    pretrain_time = time.time() - pretrain_start_time
 
     classifier_model = GnnClassifierHead(pretrained_model=pretrain_model, out_channels=len(labels.unique()))
+
+    classifier_start_time = time.time()
     classifier_model = fine_tune_model(
         classifier_model,
         data,
@@ -160,6 +164,7 @@ def run_structural_gcn_pipeline(data, labels, hidden_dim=64, mid_dim=32, pretrai
         epochs=finetune_epochs,
         device=device
     )
+    classifier_time = time.time() - classifier_start_time
 
     classifer_eval_start_time = time.time()
     classification_results = evaluate_model(classifier_model, data, labels, device=device)
@@ -167,9 +172,11 @@ def run_structural_gcn_pipeline(data, labels, hidden_dim=64, mid_dim=32, pretrai
 
     original_edges = data.edge_index
     data.edge_index, rem_edge_list = split_edges_for_link_prediction(original_edges)
+    link_pred_start_time = time.time()
     classifier_model = fine_tune_link_prediction(
         classifier_model, data, rem_edge_list=rem_edge_list, epochs=finetune_epochs, device=device
     )
+    link_pred_time = time.time() - link_pred_start_time
     lp_eval_start_time = time.time()
     lp_results = evaluate_link_prediction(classifier_model, data, rem_edge_list, device=device)
     lp_eval_time = time.time() - lp_eval_start_time
@@ -179,14 +186,18 @@ def run_structural_gcn_pipeline(data, labels, hidden_dim=64, mid_dim=32, pretrai
 
     classification_results.metadata.update({
         "seed": seed,
-        "train_time": runtime,
+        "classifier_time": classifier_time,
+        "pretrain_time": pretrain_time,
+        "link_pred_time": link_pred_time,
         "device": str(device),
         "model": "StructuralGCN"
     })
 
     lp_results.metadata.update({
         "seed": seed,
-        "train_time": runtime,
+        "classifier_time": classifier_time,
+        "pretrain_time": pretrain_time,
+        "link_pred_time": link_pred_time,
         "device": str(device),
         "model": "StructuralGCN"
     })

@@ -273,10 +273,12 @@ def run_gat_pipeline(data, labels, heads=1, pretrain_epochs=100, finetune_epochs
 
     pretrain_model, class_model = initialize_models(in_dim, num_classes, heads, device)
 
-    pretrain_model = pretrain(pretrain_model, data, epochs=pretrain_epochs)
+    # pretrain_model = pretrain(pretrain_model, data, epochs=pretrain_epochs) #No Pretrain because it muddies the experiment argument
     # evaluate_pretrain(pretrain_model, data)
 
+    classifier_train_start_time = time.time()
     class_model = fine_tune(class_model, pretrain_model, data, labels, epochs=finetune_epochs)
+    classifier_train_time = time.time() - classifier_train_start_time
 
     classifier_eval_start_time = time.time()
     classification_results = evaluate_classification(class_model, data, labels, data.test_mask)
@@ -284,7 +286,9 @@ def run_gat_pipeline(data, labels, heads=1, pretrain_epochs=100, finetune_epochs
 
     original_edges = data.edge_index
     data.edge_index, rem_edge_list = split_edges_for_link_prediction(original_edges)
+    link_prediction_train_start_time = time.time()
     class_model = finetune_link_prediction(class_model, data, rem_edge_list, epochs=finetune_epochs)
+    link_prediction_train_time = time.time() - link_prediction_train_start_time
 
 
     link_prediction_eval_start_time = time.time()

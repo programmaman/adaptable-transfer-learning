@@ -436,18 +436,23 @@ def run_structg_pipeline_internal(
     start_time = time.time()
 
     # Phase 1: Node2Vec pretraining
+    pretrain_start = time.time()
     model = pretrain_node2vec(model, pretrain_epochs, batch_size=128, lr=0.01, verbose=True)
+
 
     # Phase 2: SSL + classification (internal classifier)
     model = pretrain_full_model_internal(
         model, data_sub, labels, train_mask, pretrain_epochs,
         do_linkpred, do_n2v_align, do_featrec, device, log_every=10
     )
+    pretrain_time = time.time() - pretrain_start
 
     # Phase 3: Finetuning for classification
+    finetune_start = time.time()
     model = finetune_classification_internal(
         model, data, labels, train_mask, finetune_epochs, device, log_every=10
     )
+    finetune_time = time.time() - finetune_start
 
     # Evaluation: Classification
     classifier_eval_start = time.time()
@@ -456,7 +461,9 @@ def run_structg_pipeline_internal(
 
     # Optional: Link prediction
     if do_linkpred:
+        link_pred_start = time.time()
         model = finetune_link_prediction(model, data, rem_edge_list, finetune_epochs, device=device)
+        link_pred_time = time.time() - link_pred_start
 
         lp_eval_start = time.time()
         lp_results = evaluate_link_prediction(model, data, rem_edge_list, device)
@@ -464,6 +471,7 @@ def run_structg_pipeline_internal(
     else:
         lp_results = None
         lp_eval_time = 0
+        link_pred_time = 0
 
     total_time = time.time() - start_time - classifier_eval_time - lp_eval_time
 
@@ -478,7 +486,9 @@ def run_structg_pipeline_internal(
     if lp_results:
         lp_results.metadata.update({
             "seed": seed,
-            "train_time": total_time,
+            "pretrain_time": pretrain_time,
+            "finetune_time": finetune_time,
+            "link_pred_time": link_pred_time,
             "device": str(device),
             "model": "StructuralGNN",
             "using_internal_classifier": True
