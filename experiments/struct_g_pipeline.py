@@ -503,18 +503,23 @@ def run_structg_pipeline(
     # Metadata
     classifier_results.metadata.update({
         "seed": seed,
-        "train_time": total_time,
+        "pretrain_time": pretrain_time,
+        "classifier_time": finetune_time,
+        "total_time": total_time,
         "device": str(device),
-        "model": "StructuralGNN"
+        "model": "Struct-G",
+        "using_internal_classifier": True
     })
+
     if lp_results:
         lp_results.metadata.update({
             "seed": seed,
             "pretrain_time": pretrain_time,
-            "finetune_time": finetune_time,
             "link_pred_time": link_pred_time,
+            "total_time": total_time,
             "device": str(device),
-            "model": "StructuralGNN"
+            "model": "Struct-G",
+            "using_internal_classifier": True
         })
 
     return model, classifier_results, lp_results

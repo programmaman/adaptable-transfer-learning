@@ -188,14 +188,12 @@ def run_structural_gcn_pipeline(data, labels, hidden_dim=64, mid_dim=32, pretrai
         "seed": seed,
         "classifier_time": classifier_time,
         "pretrain_time": pretrain_time,
-        "link_pred_time": link_pred_time,
         "device": str(device),
         "model": "StructuralGCN"
     })
 
     lp_results.metadata.update({
         "seed": seed,
-        "classifier_time": classifier_time,
         "pretrain_time": pretrain_time,
         "link_pred_time": link_pred_time,
         "device": str(device),

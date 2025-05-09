@@ -1,7 +1,7 @@
 import pandas as pd
 
 # Path to your Excel file
-file_path = "../results/experiment_results_v2.xlsx"
+file_path = "../results/experiment_results.xlsx"
 xls = pd.ExcelFile(file_path)
 sheet_names = xls.sheet_names
 
@@ -17,18 +17,12 @@ for sheet in sheet_names:
     # Standardize and clean column names
     df.columns = df.columns.str.strip().str.lower()
 
-    # Remove duplicate columns (e.g., multiple 'model' columns)
+    # Remove duplicate columns
     df = df.loc[:, ~df.columns.duplicated()]
 
-    # Rename 'pipeline' to 'model' if needed
-    if 'pipeline' in df.columns and 'model' not in df.columns:
-        df.rename(columns={'pipeline': 'model'}, inplace=True)
-
-
-
     # Verify required columns exist
-    if 'model' not in df.columns:
-        print(f"[Warning] Skipping sheet '{sheet}': missing 'model' or 'pipeline' column.")
+    if 'pipeline' not in df.columns:
+        print(f"[Warning] Skipping sheet '{sheet}': missing 'pipeline' column.")
         continue
 
     existing_metrics = [m for m in metrics if m in df.columns]
@@ -38,11 +32,11 @@ for sheet in sheet_names:
 
     print(f"Processing sheet: {sheet}")
     print("Columns:", df.columns.tolist())
-    print(df[['model']].head())
+    print(df[['pipeline']].head())
 
     try:
-        # Group by model and compute mean & std
-        summary = df.groupby("model")[existing_metrics].agg(['mean', 'std']).reset_index()
+        # Group by pipeline and compute mean & std
+        summary = df.groupby("pipeline")[existing_metrics].agg(['mean', 'std']).reset_index()
 
         # Flatten multi-index column names
         summary.columns = ['_'.join(col).rstrip('_') for col in summary.columns.values]
@@ -50,9 +44,8 @@ for sheet in sheet_names:
         # Add dataset name as a column
         summary.insert(0, 'dataset', sheet)
 
-        # Replace "_" with " " in 'dataset' row
+        # Replace underscores with spaces in 'dataset' name
         summary['dataset'] = summary['dataset'].str.replace("_", " ")
-        #Space LinkPrediction to Link Prediction
         summary['dataset'] = summary['dataset'].str.replace("LinkPrediction", "Link Prediction")
 
         all_summaries.append(summary)

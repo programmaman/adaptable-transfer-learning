@@ -12,7 +12,7 @@ def set_global_seed(seed):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-def generate_synthetic_graph(num_nodes=1000, num_edges=1500, feature_dim=16):
+def generate_synthetic_graph(num_nodes=10000, num_edges=15000, feature_dim=16):
     # Generate random node features
     x = torch.randn((num_nodes, feature_dim))
 

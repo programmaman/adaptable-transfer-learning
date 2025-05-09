@@ -442,15 +442,17 @@ def run_gpt_gnn_pipeline(data, labels, hidden_dim=64, num_layers=2, num_heads=2,
     runtime = time.time() - start_time - classifer_eval_runtime - lp_eval_runtime
     classification_results.metadata.update({
         "seed": seed,
-        "train_time": runtime,
+        "classifier_time": classifer_train_runtime,
+        "pretrain_time": pretrain_runtime,
+        "total_time": runtime,
         "device": str(device),
         "model": "GPT-GNN"
     })
     link_prediction_results.metadata.update({
         "seed": seed,
-        "classifier_train_time": classifer_train_runtime,
         "pretrain_time": pretrain_runtime,
-        "link_prediction_time": link_prediction_runtime,
+        "link_pred_time": link_prediction_runtime,
+        "total_time": runtime,
         "device": str(device),
         "model": "GPT-GNN"
     })

@@ -1,0 +1,30 @@
+{
+  "classification": {
+    "accuracy": 0.9485981308411215,
+    "precision": 0.9465327471245937,
+    "recall": 0.9470450056968946,
+    "f1": 0.9467281976880506,
+    "auc": null,
+    "ap": null,
+    "seed": 42,
+    "train_time": 1052.283658027649,
+    "device": "cpu",
+    "model": "StructuralGNN",
+    "using_internal_classifier": true
+  },
+  "link_prediction": {
+    "accuracy": 0.8683272534877893,
+    "precision": 0.9664950271566622,
+    "recall": 0.7631087967475146,
+    "f1": 0.8528436940792034,
+    "auc": 0.9657929689808038,
+    "ap": 0.9655511375185994,
+    "seed": 42,
+    "pretrain_time": 991.2057912349701,
+    "finetune_time": 22.787719011306763,
+    "link_pred_time": 38.290144205093384,
+    "device": "cpu",
+    "model": "StructuralGNN",
+    "using_internal_classifier": true
+  }
+}

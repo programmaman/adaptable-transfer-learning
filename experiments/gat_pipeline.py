@@ -299,14 +299,16 @@ def run_gat_pipeline(data, labels, heads=1, pretrain_epochs=100, finetune_epochs
 
     classification_results.metadata.update({
         "seed": seed,
-        "train_time": runtime,
+        "classifier_time": classifier_train_time,
+        "total_time": runtime,
         "device": str(device),
         "model": "SimpleGAT"
     })
 
     link_prediction_results.metadata.update({
         "seed": seed,
-        "train_time": runtime,
+        "link_pred_time": link_prediction_train_time,
+        "total_time": runtime,
         "device": str(device),
         "model": "SimpleGAT"
     })

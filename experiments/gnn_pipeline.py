@@ -258,7 +258,9 @@ def run_pipeline(data, labels,
     # pre_model = pretrain(pre_model, data, epochs=pretrain_epochs) #No Pretrain because it muddies the experiment argument
     # evaluate_pretrain(pre_model, data)
 
+    classifier_train_start_time = time.time()
     class_model = fine_tune(class_model, pre_model, data, labels, epochs=finetune_epochs)
+    classifier_train_time = time.time() - classifier_train_start_time
 
     classifer_eval_start_time = time.time()
     classification_results = evaluate_classification(class_model, data, labels, data.test_mask)
@@ -268,7 +270,9 @@ def run_pipeline(data, labels,
     original_edges = data.edge_index
     data.edge_index, rem_edge_list = split_edges_for_link_prediction(original_edges)
 
+    link_prediction_start_time = time.time()
     class_model = finetune_link_prediction(class_model, data, rem_edge_list, epochs=finetune_epochs)
+    link_prediction_time = time.time() - link_prediction_start_time
 
     lp_eval_start_time = time.time()
     link_prediction_results = evaluate_link_prediction(class_model, data, rem_edge_list)
@@ -278,14 +282,16 @@ def run_pipeline(data, labels,
 
     classification_results.metadata.update({
         "seed": seed,
-        "train_time": runtime,
+        "classifier_time": classifier_train_time,
+        "total_time": runtime,
         "device": str(device),
         "model": "SimpleGNN"
     })
 
     link_prediction_results.metadata.update({
         "seed": seed,
-        "train_time": runtime,
+        "link_pred_time": link_prediction_time,
+        "total_time": runtime,
         "device": str(device),
         "model": "SimpleGNN"
     })

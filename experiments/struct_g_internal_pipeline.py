@@ -68,7 +68,7 @@ def create_train_subgraph(data, train_mask, labels=None):
     data_sub.train_node_idx = torch.arange(data_sub.num_nodes)
 
     if labels is not None:
-        data_sub.y = labels[train_nodes]
+        data_sub.y = labels.to(train_nodes.device)[train_nodes]
 
     return data_sub
 
@@ -477,9 +477,11 @@ def run_structg_pipeline_internal(
 
     classifier_results.metadata.update({
         "seed": seed,
-        "train_time": total_time,
+        "pretrain_time": pretrain_time,
+        "classifier_time": finetune_time,
+        "total_time": total_time,
         "device": str(device),
-        "model": "StructuralGNN",
+        "model": "Struct-G Internal Classifier",
         "using_internal_classifier": True
     })
 
@@ -487,10 +489,10 @@ def run_structg_pipeline_internal(
         lp_results.metadata.update({
             "seed": seed,
             "pretrain_time": pretrain_time,
-            "finetune_time": finetune_time,
             "link_pred_time": link_pred_time,
+            "total_time": total_time,
             "device": str(device),
-            "model": "StructuralGNN",
+            "model": "Struct-G Internal Classifier",
             "using_internal_classifier": True
         })
 
