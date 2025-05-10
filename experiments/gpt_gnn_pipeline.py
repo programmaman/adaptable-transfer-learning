@@ -407,27 +407,33 @@ def run_gpt_gnn_pipeline(data, labels, hidden_dim=64, num_layers=2, num_heads=2,
     edge_type = data.edge_type
     edge_time = data.edge_time
 
+    pretrain_start_time = time.time()
     model = pretrain_link_prediction(
         model, data, node_type, edge_time, edge_type,
         rem_edge_list, ori_edge_list, node_dict, target_type,
         epochs=pretrain_epochs, lr=0.005, weight_decay=5e-4, log_every=10, device=device
     )
+    pretrain_runtime = time.time() - pretrain_start_time
 
+    classifier_start_time = time.time()
     classifier, train_mask, val_mask, test_mask = fine_tune_classifier(
         model, data, node_type, edge_time, edge_type,
         labels, hidden_dim, finetune_epochs=finetune_epochs, lr=0.01, weight_decay=5e-4,
         log_every=10, device=device
     )
+    classifer_train_runtime = time.time() - classifier_start_time
 
     classifer_eval_start_time = time.time()
     classification_results = evaluate_classifier(classifier, model, data, labels, test_mask, device)
     classifer_eval_runtime = time.time() - classifer_eval_start_time
 
+    link_prediction_start_time = time.time()
     model = finetune_link_prediction(
         model, data, node_type, edge_time, edge_type,
         rem_edge_list, ori_edge_list, node_dict, target_type,
         finetune_epochs=finetune_epochs, device=device
     )
+    link_prediction_runtime = time.time() - link_prediction_start_time
 
     lp_eval_start_time = time.time()
     link_prediction_results = evaluate_gpt_link_prediction(model, data, rem_edge_list, ori_edge_list, device)
@@ -436,13 +442,17 @@ def run_gpt_gnn_pipeline(data, labels, hidden_dim=64, num_layers=2, num_heads=2,
     runtime = time.time() - start_time - classifer_eval_runtime - lp_eval_runtime
     classification_results.metadata.update({
         "seed": seed,
-        "train_time": runtime,
+        "classifier_time": classifer_train_runtime,
+        "pretrain_time": pretrain_runtime,
+        "total_time": runtime,
         "device": str(device),
         "model": "GPT-GNN"
     })
     link_prediction_results.metadata.update({
         "seed": seed,
-        "train_time": runtime,
+        "pretrain_time": pretrain_runtime,
+        "link_pred_time": link_prediction_runtime,
+        "total_time": runtime,
         "device": str(device),
         "model": "GPT-GNN"
     })

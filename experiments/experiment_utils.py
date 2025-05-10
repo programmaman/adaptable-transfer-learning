@@ -12,7 +12,7 @@ def set_global_seed(seed):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-def generate_synthetic_graph(num_nodes=1000, num_edges=1500, feature_dim=16):
+def generate_synthetic_graph(num_nodes=10000, num_edges=15000, feature_dim=16):
     # Generate random node features
     x = torch.randn((num_nodes, feature_dim))
 
@@ -50,6 +50,93 @@ def generate_task_labels(data, num_classes=5):
     labels = torch.tensor(kmeans.labels_, dtype=torch.long)
     return labels
 
+def load_deezer_europe_dataset(edge_path, features_path, target_path):
+    # --- Load edges ---
+    edges_df = pd.read_csv(edge_path)
+    edge_index = torch.tensor(edges_df[['node_1', 'node_2']].values.T, dtype=torch.long)
+
+    # --- Load features ---
+    with open(features_path, 'r') as f:
+        features_dict = json.load(f)
+
+    node_ids = sorted(set(int(k) for k in features_dict.keys()))
+    node_id_map = {node_id: i for i, node_id in enumerate(node_ids)}
+    num_nodes = len(node_ids)
+    num_features = max(f for feats in features_dict.values() for f in feats) + 1
+
+    x = torch.zeros((num_nodes, num_features))
+    for raw_id, feats in features_dict.items():
+        mapped_id = node_id_map[int(raw_id)]
+        x[mapped_id, feats] = 1.0
+
+    # --- Load labels ---
+    target_df = pd.read_csv(target_path)
+    target_df = target_df[target_df['id'].isin(node_ids)]
+    target_df['mapped_id'] = target_df['id'].map(node_id_map)
+
+    labels = torch.full((num_nodes,), -1, dtype=torch.long)
+    labels[target_df['mapped_id']] = torch.tensor(target_df['target'].values, dtype=torch.long)
+
+    # --- Filter valid edges ---
+    edge_list = edge_index.t().tolist()
+    filtered_edges = [
+        [node_id_map[src], node_id_map[dst]]
+        for src, dst in edge_list
+        if src in node_id_map and dst in node_id_map
+    ]
+    edge_index = torch.tensor(filtered_edges, dtype=torch.long).t().contiguous()
+
+    data = Data(x=x, edge_index=edge_index)
+
+    print(f"Loaded Deezer Europe: {data.num_nodes} nodes, {data.num_edges} edges, {x.size(1)} features")
+    print(f"Label coverage: {(labels >= 0).sum().item()} / {len(labels)}")
+
+    return data, labels
+
+
+def load_twitch_gamers_dataset(edge_path: str, target_path: str, use_metadata_as_features=True):
+    # Load metadata
+    meta_df = pd.read_csv(target_path)
+    node_ids = sorted(meta_df["numeric_id"].unique())
+    node_id_map = {raw_id: i for i, raw_id in enumerate(node_ids)}  # raw → internal
+
+    num_nodes = len(node_ids)
+
+    # --- Initialize features ---
+    if use_metadata_as_features:
+        feature_cols = ["views", "life_time", "affiliate"]
+        x = torch.zeros((num_nodes, len(feature_cols)))
+        for _, row in meta_df.iterrows():
+            idx = node_id_map[row["numeric_id"]]
+            x[idx] = torch.tensor([row[col] for col in feature_cols], dtype=torch.float)
+    else:
+        x = torch.eye(num_nodes)
+
+    # --- Initialize labels ---
+    labels = torch.full((num_nodes,), -1, dtype=torch.long)
+    for _, row in meta_df.iterrows():
+        idx = node_id_map[row["numeric_id"]]
+        labels[idx] = int(row["mature"])
+
+    # --- Load and remap edges ---
+    edge_df = pd.read_csv(edge_path)
+    raw_edges = edge_df[["numeric_id_1", "numeric_id_2"]].values.tolist()
+
+    filtered_edges = [
+        [node_id_map[u], node_id_map[v]]
+        for u, v in raw_edges
+        if u in node_id_map and v in node_id_map
+    ]
+    edge_index = torch.tensor(filtered_edges, dtype=torch.long).t().contiguous()
+
+    # --- Create PyG Data object ---
+    data = Data(x=x, edge_index=edge_index)
+
+    print(f"Loaded Twitch Gamers graph with {data.num_nodes} nodes, {data.num_edges} edges, {x.size(1)} features")
+    print(f"Label coverage: {(labels >= 0).sum().item()} / {len(labels)} nodes labeled")
+
+    return data, labels
+
 
 def load_musae_facebook_dataset(edge_path, features_path, target_path):
     # Load edges
@@ -60,7 +147,7 @@ def load_musae_facebook_dataset(edge_path, features_path, target_path):
     with open(features_path, 'r') as f:
         features_dict = json.load(f)
 
-    # Build a consistent node ID mapping (important!)
+    # Build a consistent node ID mapping
     node_ids = sorted(set(int(k) for k in features_dict.keys()))
     node_id_map = {node_id: i for i, node_id in enumerate(node_ids)}  # external → internal ID
 

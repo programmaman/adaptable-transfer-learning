@@ -1,0 +1,16 @@
+{
+  "classification": {
+    "accuracy": 0.9728526924788607,
+    "precision": 0.9738021070365408,
+    "recall": 0.9702762070250741,
+    "f1": 0.9719307850028622,
+    "auc": null,
+    "ap": null,
+    "seed": 42,
+    "train_time": 62.39354848861694,
+    "device": "cuda",
+    "model": "StructuralGNN",
+    "using_internal_classifier": true
+  },
+  "link_prediction": null
+}

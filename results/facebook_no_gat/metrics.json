@@ -1,0 +1,28 @@
+{
+  "classification": {
+    "accuracy": 0.9679572763684913,
+    "precision": 0.969367295691379,
+    "recall": 0.9635728791668181,
+    "f1": 0.9662773048198045,
+    "auc": null,
+    "ap": null,
+    "seed": 42,
+    "train_time": 71.3321316242218,
+    "device": "cuda",
+    "model": "StructuralGNN",
+    "using_internal_classifier": true
+  },
+  "link_prediction": {
+    "accuracy": 0.8492379058979457,
+    "precision": 0.9229534510433387,
+    "recall": 0.7620941020543406,
+    "f1": 0.8348457350272233,
+    "auc": 0.9526878929647211,
+    "ap": 0.9433213304547042,
+    "seed": 42,
+    "train_time": 71.3321316242218,
+    "device": "cuda",
+    "model": "StructuralGNN",
+    "using_internal_classifier": true
+  }
+}

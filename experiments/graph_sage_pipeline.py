@@ -1,6 +1,6 @@
 import torch
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-
+from experiments.experiment_utils import split_edges_for_link_prediction, sample_negative_edges
 from experiments.experiment_utils import EvaluationResult
 from models.baselines import SimpleGraphSAGE
 from utils import get_device
@@ -110,34 +110,31 @@ def fine_tune(class_model, pretrain_model, data, labels,
                 f"Epoch {epoch:03d} | Fine-tune Loss: {loss.item():.4f} | Val Acc: {metrics.accuracy:.4f} | Val F1: {metrics.f1:.4f}")
     return class_model
 
-def fine_tune_link_prediction(model, data, epochs=50, lr=0.01, weight_decay=5e-4, num_samples=1000, log_every=10):
+def fine_tune_link_prediction(model, data, rem_edge_list, epochs=50, lr=0.01, weight_decay=5e-4, log_every=10):
     """
-    Fine-tunes the GraphSAGE model for link prediction using a dot-product-based binary classification loss.
+    Fine-tunes the GraphSAGE model using held-out edges (rem_edge_list) for link prediction.
     """
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     bce_loss = torch.nn.BCEWithLogitsLoss()
 
-    src, dst = data.edge_index
-    n_edges = src.size(0)
-    n = data.num_nodes
+    pos_edges = rem_edge_list[0][0].to(data.x.device)
+    num_nodes = data.num_nodes
 
     def score(u, v):
         return (u * v).sum(dim=1)
 
-    print("\n=== Fine-tuning for Link Prediction ===")
+    print("\n=== Fine-tuning GraphSAGE for Link Prediction ===")
     for epoch in range(1, epochs + 1):
         model.train()
         optimizer.zero_grad()
 
         emb = model(data.x, data.edge_index)
-        idx = torch.randperm(n_edges)[:num_samples]
 
-        pos_u, pos_v = src[idx], dst[idx]
-        neg_u = torch.randint(0, n, (num_samples,), device=data.x.device)
-        neg_v = torch.randint(0, n, (num_samples,), device=data.x.device)
+        neg_edges = sample_negative_edges(pos_edges, num_nodes).to(data.x.device)
 
-        pos_scores = score(emb[pos_u], emb[pos_v])
-        neg_scores = score(emb[neg_u], emb[neg_v])
+        pos_scores = score(emb[pos_edges[:, 0]], emb[pos_edges[:, 1]])
+        neg_scores = score(emb[neg_edges[:, 0]], emb[neg_edges[:, 1]])
+
         logits = torch.cat([pos_scores, neg_scores])
         labels = torch.cat([
             torch.ones_like(pos_scores),
@@ -152,6 +149,7 @@ def fine_tune_link_prediction(model, data, epochs=50, lr=0.01, weight_decay=5e-4
             print(f"Epoch {epoch:03d} | LP Fine-tune Loss: {loss.item():.4f}")
 
     return model
+
 
 
 def evaluate_classification(model, data, labels, mask, verbose=True) -> EvaluationResult:
@@ -186,29 +184,22 @@ def evaluate_classification(model, data, labels, mask, verbose=True) -> Evaluati
 
 from sklearn.metrics import roc_auc_score, average_precision_score
 
-def evaluate_link_prediction(model, data, num_samples=1000) -> EvaluationResult:
+def evaluate_link_prediction(model, data, rem_edge_list) -> EvaluationResult:
     """
-    Evaluates link prediction using dot-product similarity of node embeddings.
+    Evaluates link prediction using the held-out edge list.
     """
     model.eval()
     with torch.no_grad():
         emb = model(data.x, data.edge_index)
 
-    src, dst = data.edge_index
-    idx = torch.randperm(src.size(0))[:num_samples]
-    pos_u, pos_v = src[idx], dst[idx]
+    pos_edges = rem_edge_list[0][0].to(data.x.device)
+    neg_edges = sample_negative_edges(pos_edges, data.num_nodes).to(data.x.device)
 
-    # Negative samples
-    n = data.num_nodes
-    neg_u = torch.randint(0, n, (num_samples,), device=data.x.device)
-    neg_v = torch.randint(0, n, (num_samples,), device=data.x.device)
-
-    # Scoring function (dot product)
     def score(u, v):
         return (u * v).sum(dim=1)
 
-    pos_scores = score(emb[pos_u], emb[pos_v])
-    neg_scores = score(emb[neg_u], emb[neg_v])
+    pos_scores = score(emb[pos_edges[:, 0]], emb[pos_edges[:, 1]])
+    neg_scores = score(emb[neg_edges[:, 0]], emb[neg_edges[:, 1]])
 
     labels = torch.cat([torch.ones_like(pos_scores), torch.zeros_like(neg_scores)]).cpu()
     scores = torch.cat([pos_scores, neg_scores]).cpu()
@@ -221,7 +212,7 @@ def evaluate_link_prediction(model, data, num_samples=1000) -> EvaluationResult:
     auc = roc_auc_score(labels, scores)
     ap = average_precision_score(labels, scores)
 
-    print("\n--- Link Prediction Metrics ---")
+    print("\n--- Link Prediction Metrics (Held-out Edges) ---")
     print(f"  → Accuracy:       {acc:.4f}")
     print(f"  → Precision:      {precision:.4f}")
     print(f"  → Recall:         {recall:.4f}")
@@ -238,6 +229,7 @@ def evaluate_link_prediction(model, data, num_samples=1000) -> EvaluationResult:
         ap=ap,
         preds=preds
     )
+
 
 
 def run_graphsage_pipeline(data, labels,
@@ -264,31 +256,42 @@ def run_graphsage_pipeline(data, labels,
 
     pre_model, class_model = initialize_models(in_dim, num_classes, device)
 
-    pre_model = pretrain(pre_model, data, epochs=pretrain_epochs)
-    evaluate_pretrain(pre_model, data)
+    # pre_model = pretrain(pre_model, data, epochs=pretrain_epochs) #No Pretrain because it muddies the experiment argument
+    # evaluate_pretrain(pre_model, data)
 
+    classifier_train_start_time = time.time()
     class_model = fine_tune(class_model, pre_model, data, labels, epochs=finetune_epochs)
+    classifier_train_runtime = time.time() - classifier_train_start_time
 
     classifer_eval_start_time = time.time()
     classification_results = evaluate_classification(class_model, data, labels, data.test_mask)
     classifier_eval_runtime = time.time() - classifer_eval_start_time
 
-    class_model = fine_tune_link_prediction(class_model, data, epochs=finetune_epochs)
+    data.edge_index, rem_edge_list = split_edges_for_link_prediction(data.edge_index, removal_ratio=0.3)
+
+    link_prediction_start_time = time.time()
+    class_model = fine_tune_link_prediction(class_model, data, rem_edge_list, epochs=finetune_epochs)
+    link_prediction_runtime = time.time() - link_prediction_start_time
+
     lp_eval_start_time = time.time()
-    lp_results = evaluate_link_prediction(class_model, data)
+    lp_results = evaluate_link_prediction(class_model, data, rem_edge_list)
     lp_eval_runtime = time.time() - lp_eval_start_time
 
     runtime = time.time() - start_time - classifier_eval_runtime - lp_eval_runtime
 
     classification_results.metadata.update({
         "seed": seed,
-        "train_time": runtime,
+        "pretrain_time": 0,  # No pretraining
+        "classifier_time": classifier_train_runtime,
+        "total_time": runtime,
         "device": str(device),
         "model": "GraphSAGE"
     })
     lp_results.metadata.update({
         "seed": seed,
-        "train_time": runtime,
+        "pretrain_time": 0,  # No pretraining
+        "link_pred_time": link_prediction_runtime,
+        "total_time": runtime,
         "device": str(device),
         "model": "GraphSAGE"
     })
