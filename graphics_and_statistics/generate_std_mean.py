@@ -1,62 +1,74 @@
 import pandas as pd
+import numpy as np
 
-# Path to your Excel file
+# Load Excel
 file_path = "../results/experiment_results.xlsx"
 xls = pd.ExcelFile(file_path)
 sheet_names = xls.sheet_names
 
-# Metrics to summarize
+# Metrics
 metrics = ["accuracy", "precision", "recall", "f1", "auc", "ap"]
+timing_components = ["classifier_time", "pretrain_time", "link_pred_time"]
+timing_metrics = ["train_time"] + timing_components
 
-# Collect summaries here
+# Alias mapping
+time_aliases = {
+    "classifier_train_time": "classifier_time",
+    "link_prediction_time": "link_pred_time",
+    "finetune_time": "classifier_time"
+}
+
 all_summaries = []
 
 for sheet in sheet_names:
     df = pd.read_excel(xls, sheet_name=sheet)
-
-    # Standardize and clean column names
     df.columns = df.columns.str.strip().str.lower()
-
-    # Remove duplicate columns
     df = df.loc[:, ~df.columns.duplicated()]
 
-    # Verify required columns exist
-    if 'pipeline' not in df.columns:
-        print(f"[Warning] Skipping sheet '{sheet}': missing 'pipeline' column.")
+    if "pipeline" not in df.columns:
+        print(f"[Warning] Skipping '{sheet}' — missing 'pipeline'")
         continue
 
-    existing_metrics = [m for m in metrics if m in df.columns]
-    if not existing_metrics:
-        print(f"[Warning] Skipping sheet '{sheet}': no valid metric columns found.")
+    # Save original train_time (for fallback use)
+    original_train_time = df["train_time"].copy() if "train_time" in df.columns else None
+
+    # Unify alias columns into canonical time columns
+    for alias, canonical in time_aliases.items():
+        if alias in df.columns:
+            if canonical in df.columns:
+                df[canonical] = df[canonical].fillna(0) + df[alias].fillna(0)
+            else:
+                df[canonical] = df[alias]
+            df.drop(columns=[alias], inplace=True)
+
+    # Ensure all timing components exist
+    for col in timing_components:
+        if col not in df.columns:
+            df[col] = 0.0
+
+    # Compute total train_time from components
+    computed_train_time = df[timing_components].sum(axis=1)
+
+    # Use computed train time when available, fallback to original if needed
+    if original_train_time is not None:
+        df["train_time"] = computed_train_time.where(computed_train_time > 0, original_train_time)
+    else:
+        df["train_time"] = computed_train_time
+
+    # Determine what metrics are available in this sheet
+    available_metrics = [m for m in metrics + timing_metrics if m in df.columns]
+    if not available_metrics:
+        print(f"[Warning] Skipping '{sheet}' — no usable metric columns")
         continue
 
-    print(f"Processing sheet: {sheet}")
-    print("Columns:", df.columns.tolist())
-    print(df[['pipeline']].head())
+    # Group and summarize
+    summary = df.groupby("pipeline")[available_metrics].agg(['mean', 'std']).reset_index()
+    summary.columns = ['_'.join(col).rstrip('_') for col in summary.columns.values]
+    summary.insert(0, "dataset", sheet.replace("_", " ").replace("LinkPrediction", "Link Prediction"))
 
-    try:
-        # Group by pipeline and compute mean & std
-        summary = df.groupby("pipeline")[existing_metrics].agg(['mean', 'std']).reset_index()
+    all_summaries.append(summary)
 
-        # Flatten multi-index column names
-        summary.columns = ['_'.join(col).rstrip('_') for col in summary.columns.values]
-
-        # Add dataset name as a column
-        summary.insert(0, 'dataset', sheet)
-
-        # Replace underscores with spaces in 'dataset' name
-        summary['dataset'] = summary['dataset'].str.replace("_", " ")
-        summary['dataset'] = summary['dataset'].str.replace("LinkPrediction", "Link Prediction")
-
-        all_summaries.append(summary)
-
-    except Exception as e:
-        print(f"[Error] Failed to process sheet '{sheet}': {e}")
-        continue
-
-# Combine all dataset summaries
+# Combine and export
 final_summary = pd.concat(all_summaries, ignore_index=True)
-
-# Save or inspect
 final_summary.to_csv("gnn_summary_statistics.csv", index=False)
-print("✅ Summary saved to gnn_summary_statistics.csv")
+print("✅ Saved: gnn_summary_statistics.csv with full timing details")

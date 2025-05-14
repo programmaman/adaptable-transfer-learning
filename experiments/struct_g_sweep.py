@@ -117,6 +117,10 @@ def run_structural_sweep(debug=False):
                 labels = torch.tensor(labels, dtype=torch.long)
             graph_data.y = labels
 
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            graph_data = graph_data.to(device)
+            labels = labels.to(device)
+
             # --- Run Internal Classifier Pipeline ---
             _, int_cls, int_lp = run_structg_pipeline_internal(
                 data=graph_data.clone(),

@@ -17,19 +17,29 @@ plt.rcParams.update({
 
 # --- Load & Prep ---
 df = pd.read_csv("gnn_summary_statistics.csv")
+
+# Rename pipeline to model
+if "pipeline" in df.columns:
+    df = df.rename(columns={"pipeline": "model"})
+
+# Normalize model names
 df['model'] = df['model'].str.replace("Simple", "", regex=False)
 
-# Categorize datasets
+# Categorize tasks
 df['task'] = df['dataset'].apply(lambda d: 'classification' if 'Classification' in d else 'link_prediction')
-
-# Color palette
-datasets = sorted(df['dataset'].unique())
-dataset_palette = dict(zip(datasets, sns.color_palette("Set2", len(datasets))))
 
 # --- Plotting ---
 def plot_metric_bar(metric="accuracy_mean", save=False, dpi=600):
+    # Determine task type
+    is_lp_metric = metric in ["auc_mean", "ap_mean"]
+    task_filter = 'link_prediction' if is_lp_metric else 'classification'
+
+    plot_data = df[df['task'] == task_filter].copy()
+    datasets = sorted(plot_data['dataset'].unique())
+    dataset_palette = dict(zip(datasets, sns.color_palette("Set2", len(datasets))))
+
     model_order = (
-        df.groupby("model")[metric]
+        plot_data.groupby("model")[metric]
         .mean()
         .sort_values(ascending=False)
         .index
@@ -40,13 +50,11 @@ def plot_metric_bar(metric="accuracy_mean", save=False, dpi=600):
 
     _, ax = plt.subplots(figsize=(fig_width, fig_height))
 
-    plot_data = df.copy()
     plot_data["model"] = pd.Categorical(plot_data["model"], categories=model_order, ordered=True)
     plot_data.sort_values(["model", "dataset"], inplace=True)
 
     bar_width = 0.8 / len(datasets)
     x_ticks = np.arange(len(model_order))
-
 
     for i, dataset in enumerate(datasets):
         dataset_df = plot_data[plot_data['dataset'] == dataset]
@@ -83,10 +91,9 @@ def plot_metric_bar(metric="accuracy_mean", save=False, dpi=600):
     ax.set_xlim(-padding, len(model_order) - 1 + padding)
     ax.set_xticks(x_ticks)
     ax.set_xticklabels(model_order, rotation=30, ha="right", fontsize=13, weight="medium")
-    ax.set_xlim(-padding, len(model_order) - 1 + padding)
     ax.set_ylabel(metric.replace("_mean", "").capitalize(), fontsize=16, weight="bold", labelpad=10)
     ax.set_xlabel("Model", fontsize=16, weight="bold", labelpad=10)
-    ax.set_title(f"{metric.replace('_mean', '').capitalize()} by Model & Dataset", fontsize=22, weight="bold", pad=30)
+    ax.set_title(f"{metric.replace('_mean', '').capitalize()} by Model ({task_filter.capitalize()})", fontsize=22, weight="bold", pad=30)
     ax.set_ylim(0, plot_data[metric].max() * 1.2)
 
     # Legend
@@ -95,7 +102,6 @@ def plot_metric_bar(metric="accuracy_mean", save=False, dpi=600):
 
     ax.grid(axis='y', linestyle='--', alpha=0.4)
     sns.despine(left=True)
-
     plt.tight_layout()
 
     if save:
@@ -115,5 +121,5 @@ if __name__ == "__main__":
 
     for metric in metrics:
         if metric in df.columns:
-            print(f"📊 Plotting {metric} for classification tasks...")
+            print(f"📊 Plotting {metric}...")
             plot_metric_bar(metric, save=True)
