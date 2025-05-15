@@ -17,7 +17,7 @@ ABLATION_MODES = {
     'no_linkpred':      dict(do_linkpred=False, do_n2v_align=True,  do_featrec=True,  do_classification=True),
     'no_featrec':       dict(do_linkpred=True,  do_n2v_align=True,  do_featrec=False, do_classification=True),
     'linkpred_only':    dict(do_linkpred=True,  do_n2v_align=False, do_featrec=False, do_classification=True),  # NEW
-    'no_ssl':           dict(do_linkpred=False, do_n2v_align=False, do_featrec=False, do_classification=True),
+    'no_ssl':           dict(do_linkpred=False, do_n2v_align=False, do_featrec=False, do_classification=False),
     'no_classification':dict(do_linkpred=True,  do_n2v_align=True,  do_featrec=True,  do_classification=False),
     # ───── Architecture ablations ─────
     'no_gat':           dict(do_linkpred=True,  do_n2v_align=True,  do_featrec=True,  do_classification=True, use_gat=False),
