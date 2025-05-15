@@ -7,9 +7,7 @@ ogb
 gensim
 numpy
 scikit-learn
-dgl
 pandas
 openpyxl
 seaborn
 matplotlib
-torchdata==0.9.0

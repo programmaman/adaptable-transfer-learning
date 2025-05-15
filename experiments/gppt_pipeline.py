@@ -7,7 +7,6 @@ from __future__ import annotations
 import gc, random, time
 from typing import Tuple, Optional
 
-import numpy as np
 import torch
 import torch.nn.functional as F
 import dgl
@@ -18,13 +17,13 @@ from sklearn.metrics import (
 
 from experiments.experiment_utils import (
     EvaluationResult,
-    create_masks,                       # same helper you showed earlier
     sample_negative_edges,
     split_edges_for_link_prediction,
     set_global_seed                     # wrapper around np / torch / random seeding
 )
+from experiments.struct_g_pipeline import create_masks
+from models.gppt import GraphSAGE
 from utils import get_device
-from your_model_file import GraphSAGE   # <-- put real module path here
 
 
 # --------------------------------------------------------------------------- #
@@ -165,7 +164,6 @@ def run_promptsage_pipeline(
         in_feats=data.x.size(1),
         n_hidden=n_hidden,
         n_classes=int(labels.max()) + 1,
-        classes=int(labels.max()) + 1,
         n_layers=n_layers,
         activation=F.relu,
         dropout=dropout,
