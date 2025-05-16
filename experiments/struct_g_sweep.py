@@ -175,5 +175,8 @@ def run_structural_sweep(debug=False):
     print("\n[SAVED] Results saved to 'structural_sweep_results.csv'")
 
 
-if __name__ == '__main__':
+def main():
     run_structural_sweep(debug=False)
+
+if __name__ == "__main__":
+    main()

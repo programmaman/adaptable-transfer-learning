@@ -11,4 +11,5 @@ dgl
 pandas
 openpyxl
 seaborn
+statsmodels
 matplotlib

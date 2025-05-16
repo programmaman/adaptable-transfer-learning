@@ -6,7 +6,7 @@ import torch
 from torch_geometric.utils import to_networkx
 import pandas as pd  # For storing and saving results
 
-from experiment_utils import (
+from .experiment_utils import (
     generate_synthetic_graph,
     load_musae_facebook_dataset,
     load_email_eu_core_dataset, load_twitch_gamers_dataset, load_deezer_europe_dataset,
@@ -458,5 +458,8 @@ def run_all_experiments(num_runs=5,
     print(f"\nAll experiment results saved to {output_file}")
 
 
-if __name__ == "__main__":
+def main():
     run_all_experiments(num_runs=5)
+
+if __name__ == "__main__":
+    main()

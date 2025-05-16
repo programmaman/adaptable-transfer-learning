@@ -11,18 +11,15 @@ from utils import get_device
 # Ablation Configurations
 # ---------------------------
 ABLATION_MODES = {
-    # ───── Self‑supervision ablations ─────
+#     # ───── Self‑supervision ablations ─────
     'full':             dict(do_linkpred=True,  do_n2v_align=True,  do_featrec=True,  do_classification=True),
+    'no_align_no_featrec': dict(do_linkpred=True,  do_n2v_align=False, do_featrec=False, do_classification=True),
     'no_align':         dict(do_linkpred=True,  do_n2v_align=False, do_featrec=True,  do_classification=True),
     'no_linkpred':      dict(do_linkpred=False, do_n2v_align=True,  do_featrec=True,  do_classification=True),
     'no_featrec':       dict(do_linkpred=True,  do_n2v_align=True,  do_featrec=False, do_classification=True),
-    'linkpred_only':    dict(do_linkpred=True,  do_n2v_align=False, do_featrec=False, do_classification=True),  # NEW
-    'no_ssl':           dict(do_linkpred=False, do_n2v_align=False, do_featrec=False, do_classification=True),
+    'linkpred_only':    dict(do_linkpred=True,  do_n2v_align=False, do_featrec=False, do_classification=False),
+    'no_ssl':           dict(do_linkpred=False, do_n2v_align=False, do_featrec=False, do_classification=False),
     'no_classification':dict(do_linkpred=True,  do_n2v_align=True,  do_featrec=True,  do_classification=False),
-    # ───── Architecture ablations ─────
-    'no_gat':           dict(do_linkpred=True,  do_n2v_align=True,  do_featrec=True,  do_classification=True, use_gat=False),
-    'shallow_gnn':      dict(do_linkpred=True,  do_n2v_align=True,  do_featrec=True,  do_classification=True, num_layers=1),
-    'no_gate':          dict(do_linkpred=True,  do_n2v_align=True,  do_featrec=True,  do_classification=True, use_gate=False),
 }
 
 # ---------------------------
@@ -108,13 +105,11 @@ def run_analysis_on_graph(name, data, labels, base_output_dir="results", seed=42
             "link_prediction": lp_res.as_dict()  if lp_res else None
         }, out_dir)
 
-        if do_classification and clf_res:
+        if clf_res:
             plot_tsne(e_v, labels, out_dir)
 
-# ---------------------------
-# Example Usage
-# ---------------------------
-if __name__ == "__main__":
+
+def main():
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     fb_dir   = os.path.join(BASE_DIR, "../datasets/facebook_large")
     edge_path     = os.path.join(fb_dir, "musae_facebook_edges.csv")
@@ -123,3 +118,6 @@ if __name__ == "__main__":
 
     data, labels, _ = load_musae_facebook_dataset(edge_path, features_path, target_path)
     run_analysis_on_graph("facebook", data, labels)
+
+if __name__ == "__main__":
+    main()

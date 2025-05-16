@@ -3,7 +3,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import os
 
-graph_stats = pd.read_csv("graph_structure_stats.csv")
+graph_stats = pd.read_csv("graph_structure_stats_old.csv")
 gnn_results = pd.read_csv("gnn_summary_statistics.csv")
 
 # Debug: Check for missing or invalid data
