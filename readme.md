@@ -82,13 +82,6 @@ This executes:
 
 ---
 
-## Notes
-
-* All experiment configuration is in `run.py`
-* If your experiment module has a function like `run()` or `main()`, it will be automatically invoked
-
----
-
 ## Questions?
 
 Feel free to open issues or contact the authors for clarification.
