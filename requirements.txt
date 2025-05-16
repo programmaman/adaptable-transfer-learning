@@ -7,8 +7,8 @@ ogb
 gensim
 numpy
 scikit-learn
-dgl
 pandas
 openpyxl
 seaborn
+statsmodels
 matplotlib
