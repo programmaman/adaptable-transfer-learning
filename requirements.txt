@@ -1,7 +1,11 @@
 # requirements.txt
+torch
 torch-geometric
 torch-cluster
-torch
+torchvision
+torchaudio
+dgl
+torchdata==0.8.0
 networkx
 ogb
 gensim
@@ -12,3 +16,4 @@ openpyxl
 seaborn
 statsmodels
 matplotlib
+

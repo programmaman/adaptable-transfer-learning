@@ -11,7 +11,7 @@ from torch_geometric.utils import to_networkx
 # --------------------------------------------------------------------------- #
 # dataset loaders (unchanged)                                                 #
 # --------------------------------------------------------------------------- #
-from experiment_utils import (
+from experiments.experiment_utils import (
     generate_synthetic_graph,
     load_musae_facebook_dataset,
     load_email_eu_core_dataset,
