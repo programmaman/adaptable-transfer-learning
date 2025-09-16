@@ -4,7 +4,6 @@ torch-geometric
 torch-cluster
 torchvision
 torchaudio
-dgl
 torchdata==0.8.0
 networkx
 ogb
