@@ -253,6 +253,24 @@ def transfer(args, config, gpu_id, is_reduction,
 
     print('epoch: {}, val_acc: {:4f}, test_acc: {:4f}'.format(max_epoch, max_acc, max_test_acc))
 
+    from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score, average_precision_score
+
+    # Compute metrics on the final/best model state
+    with torch.no_grad():
+        preds = logits[test_mask].argmax(dim=1).detach().cpu().numpy()
+        y_true = test_labels.detach().cpu().numpy()
+
+        precision = precision_score(y_true, preds, average="macro", zero_division=0)
+        recall = recall_score(y_true, preds, average="macro", zero_division=0)
+        f1 = f1_score(y_true, preds, average="macro", zero_division=0)
+
+        # Optional: AUC and AP (only for binary classification)
+        auc = ap = None
+        if len(set(y_true)) == 2:
+            probs = torch.softmax(logits[test_mask], dim=1)[:, 1].detach().cpu().numpy()
+            auc = roc_auc_score(y_true, probs)
+            ap = average_precision_score(y_true, probs)
+
     result_path = './result'
     mkdir(result_path)
     with open(os.path.join(result_path, 'GraphLoRA.txt'), 'a') as f:
@@ -262,6 +280,18 @@ def transfer(args, config, gpu_id, is_reduction,
         else:
             f.write('Few: False, r: %d, %s to %s: val_acc: %f, test_acc: %f\n' %
                     (args.r, args.pretrain_dataset, args.test_dataset, max_acc, max_test_acc))
+    return {
+        "train_accuracy": float(train_acc),
+        "val_accuracy": float(max_acc),
+        "test_accuracy": float(max_test_acc),
+        "best_epoch": int(max_epoch),
+        "final_loss": float(loss.item()),
+        "precision": float(precision),
+        "recall": float(recall),
+        "f1": float(f1),
+        "auc": float(auc) if auc is not None else None,
+        "ap": float(ap) if ap is not None else None,
+    }
 
 
 

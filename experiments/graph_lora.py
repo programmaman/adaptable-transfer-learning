@@ -87,6 +87,10 @@ def pretrain_and_save(args, config, pretrain_data):
 
 
 def run_graphlora_on_dataset(args, config, dataset_name, data, labels):
+    """
+    Runs GraphLoRA on a dataset with pretraining + transfer and returns detailed results.
+    Returns a dict containing classification metrics (and optionally link prediction metrics if available).
+    """
     print(f"\n========== [GraphLoRA] {dataset_name} ==========")
 
     # Attach labels to dataset (fixes NoneType issue)
@@ -95,10 +99,10 @@ def run_graphlora_on_dataset(args, config, dataset_name, data, labels):
 
     # Ensure args.test_dataset and args.pretrain_dataset are set per dataset
     args.test_dataset = dataset_name
-    args.pretrain_dataset = f"{dataset_name.lower()}_pretrain"  # unique per dataset
+    args.pretrain_dataset = f"{dataset_name.lower()}_pretrain"
 
     # Safe config loading
-    setting = 'few' if args.few else 'public'
+    setting = "few" if args.few else "public"
     if setting in config and dataset_name in config[setting]:
         args = get_parameter(args)
     else:
@@ -108,7 +112,7 @@ def run_graphlora_on_dataset(args, config, dataset_name, data, labels):
         args.l1, args.l2, args.l3, args.l4 = 1.0, 1.0, 1.0, 1.0
         args.num_epochs = 50
 
-    # Use a dataset-specific checkpoint path (prevents feature-dim mismatch)
+    # Use dataset-specific checkpoint path
     model_path = f"./pre_trained_gnn/{args.pretrain_dataset}.{args.pretext}.{config['gnn_type']}.{args.is_reduction}.pth"
 
     # Pretrain if checkpoint is missing or force_pretrain is set
@@ -116,7 +120,6 @@ def run_graphlora_on_dataset(args, config, dataset_name, data, labels):
         print(f"[Info] Running pretrain stage for {dataset_name}")
         pretrain_and_save(args, config, data)
     else:
-        # Check feature dimension compatibility before loading
         checkpoint = torch.load(model_path, map_location="cpu")
         first_key = next(iter(checkpoint))
         first_weight = checkpoint[first_key]
@@ -127,9 +130,10 @@ def run_graphlora_on_dataset(args, config, dataset_name, data, labels):
         else:
             print(f"[Info] Found existing checkpoint for {dataset_name} at {model_path}, using it.")
 
-    # Fine-tune on this dataset
+    # Fine-tune on this dataset and collect metrics
     print(f"[Debug] Finished pretrain for {dataset_name}, now starting transfer...")
-    transfer(
+
+    metrics = transfer(
         args,
         config,
         args.gpu,
@@ -138,9 +142,42 @@ def run_graphlora_on_dataset(args, config, dataset_name, data, labels):
         test_dataset=data,
     )
 
-    return {"dataset": dataset_name, "status": "done"}
+    # Expected `metrics` to be a dict like:
+    # {
+    #   "accuracy": float,
+    #   "precision": float,
+    #   "recall": float,
+    #   "f1": float,
+    #   "auc": float (optional),
+    #   "ap": float (optional)
+    # }
+
+    result = {
+        "Experiment": dataset_name,
+        "Pipeline": "GraphLoRA",
+        "accuracy": metrics.get("accuracy"),
+        "precision": metrics.get("precision"),
+        "recall": metrics.get("recall"),
+        "f1": metrics.get("f1"),
+        "auc": metrics.get("auc"),
+        "ap": metrics.get("ap"),
+    }
+
+    return result
 
 
+def save_results_to_excel(results, output_file):
+    # Normalize all dicts so they have the same keys
+    df = pd.json_normalize(results)
+
+    # Convert problematic types (like tensors, lists, custom objects) to strings
+    for col in df.columns:
+        df[col] = df[col].apply(lambda x: str(x) if not isinstance(x, (int, float, str, bool, type(None))) else x)
+
+    # Write safely with ExcelWriter
+    with pd.ExcelWriter(output_file, engine="openpyxl", mode="w") as writer:
+        df.to_excel(writer, index=False)
+    print(f"[Info] Results successfully saved to {output_file}")
 
 def main():
     args = build_args()
@@ -209,8 +246,7 @@ def main():
         time.sleep(30)  # allow GPU to cool down
 
     # Save results to Excel
-    df = pd.DataFrame(results)
-    df.to_excel(args.output_file, index=False)
+    save_results_to_excel(results, args.output_file)
     print(f"\nAll GraphLoRA results saved to {args.output_file}")
 
 
