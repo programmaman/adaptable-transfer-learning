@@ -138,6 +138,8 @@ def _evaluate_link_prediction_batched(model, data, rem_edge_list, device, batch_
     auc = roc_auc_score(labels.cpu(), scores.cpu())
     ap = average_precision_score(labels.cpu(), scores.cpu())
 
+    print(f"Link Prediction -- Acc: {acc:.4f} | Prec: {precision:.4f} | Rec: {recall:.4f} | F1: {f1:.4f} | AUC: {auc:.4f} | AP: {ap:.4f}")
+
     return EvaluationResult(
         accuracy=acc, precision=precision, recall=recall, f1=f1, auc=auc, ap=ap, preds=preds
     )
@@ -155,8 +157,7 @@ def run_graphbert_pipeline(
     epochs=50,
     do_linkpred=True,
     seed=42,
-    batch_size=1024,            # NEW: mini-batch size over nodes
-    role_id_value=0             # NEW: constant role id bucket unless you have real buckets
+    batch_size=1024,
 ):
     """
     Train + evaluate GraphBERT for node classification (batched, S=1) and optional link prediction.
@@ -164,6 +165,8 @@ def run_graphbert_pipeline(
     set_global_seed(seed)
     device = get_device()
     print(f"Using device: {device} | Seed: {seed}")
+    data.x = data.x.to(device)  # move entire feature matrix to device
+    labels = labels.to(device)  # keep labels aligned
 
     assert hasattr(data, "x"), "data.x (node feature matrix) required"
     assert data.x.dim() == 2, f"Expected data.x 2-D [N,F], got {data.x.shape}"
@@ -233,6 +236,7 @@ def run_graphbert_pipeline(
 
     # ----- Link prediction (uses safe batched embeddings) -----
     if do_linkpred:
+        print("\n=== Evaluating Link Prediction ===")
         lp_results = _evaluate_link_prediction_batched(
             model, data, rem_edge_list, device, batch_size=max(1024, batch_size)
         )
