@@ -4,6 +4,6 @@ WORKDIR /app
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . /app
-COPY /experiments/config.yaml /app/config.yaml
+#COPY /experiments/config.yaml /app/config.yaml
 ENV PYTHONPATH="/app"
-CMD ["python", "results/graphbert_mean_std calculator.py"]
+CMD ["python", "experiments/pipeline_test.py"]
