@@ -33,8 +33,8 @@ def run_graphbert_experiment(data, labels, seed=42):
         do_linkpred=True,
         seed=seed,
     )
-    cls_dict = {"Pipeline": "GraphBERT", **cls_results.as_dict(), "Experiment": "GraphBERT"}
-    lp_dict = {"Pipeline": "GraphBERT", **lp_results.as_dict(), "Experiment": "GraphBERT"} if lp_results else None
+    cls_dict = {"Pipeline": "GraphBERT", **cls_results.as_dict()}
+    lp_dict = {"Pipeline": "GraphBERT", **lp_results.as_dict()} if lp_results else None
     return cls_dict, lp_dict
 
 
@@ -57,12 +57,6 @@ def run_all_graphbert_experiments(output_file="/app/results/graphbert_results.xl
             os.path.join(fb_dir, "musae_facebook_features.json"),
             os.path.join(fb_dir, "musae_facebook_target.csv"),
         )
-        # Precompute structural targets (optional)
-        nx_g = to_networkx(data, to_undirected=True)
-        data.structural_targets = torch.tensor(
-            [nx.clustering(nx_g).get(i, 0.0) for i in range(data.num_nodes)],
-            dtype=torch.float
-        )
         cls, lp = run_graphbert_experiment(data, labels)
         results_cls.append({"Experiment": "Facebook", **cls})
         if lp: results_lp.append({"Experiment": "Facebook", **lp})
@@ -74,8 +68,6 @@ def run_all_graphbert_experiments(output_file="/app/results/graphbert_results.xl
             os.path.join(email_dir, "email-Eu-core.txt"),
             os.path.join(email_dir, "email-Eu-core-department-labels.txt")
         )
-        nx_g = to_networkx(data, to_undirected=True)
-        data.structural_targets = torch.tensor([nx.clustering(nx_g).get(i, 0.0) for i in range(data.num_nodes)])
         cls, lp = run_graphbert_experiment(data, labels)
         results_cls.append({"Experiment": "Email-EU-Core", **cls})
         if lp: results_lp.append({"Experiment": "Email-EU-Core", **lp})
@@ -88,8 +80,7 @@ def run_all_graphbert_experiments(output_file="/app/results/graphbert_results.xl
             os.path.join(gh_dir, "musae_git_features.json"),
             os.path.join(gh_dir, "musae_git_target.csv"),
         )
-        nx_g = to_networkx(data, to_undirected=True)
-        data.structural_targets = torch.tensor([nx.clustering(nx_g).get(i, 0.0) for i in range(data.num_nodes)])
+
         cls, lp = run_graphbert_experiment(data, labels)
         results_cls.append({"Experiment": "GitHub", **cls})
         if lp: results_lp.append({"Experiment": "GitHub", **lp})
@@ -102,8 +93,7 @@ def run_all_graphbert_experiments(output_file="/app/results/graphbert_results.xl
             os.path.join(dz_dir, "deezer_europe_features.json"),
             os.path.join(dz_dir, "deezer_europe_target.csv"),
         )
-        nx_g = to_networkx(data, to_undirected=True)
-        data.structural_targets = torch.tensor([nx.clustering(nx_g).get(i, 0.0) for i in range(data.num_nodes)])
+
         cls, lp = run_graphbert_experiment(data, labels)
         results_cls.append({"Experiment": "Deezer Europe", **cls})
         if lp: results_lp.append({"Experiment": "Deezer Europe", **lp})

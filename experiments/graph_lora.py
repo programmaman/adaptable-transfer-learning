@@ -4,6 +4,7 @@ import time
 import yaml
 import torch
 import pandas as pd
+from utils import get_device
 from yaml import SafeLoader
 from torch_geometric.utils import add_remaining_self_loops
 from torch_geometric.transforms import SVDFeatureReduction
@@ -21,6 +22,19 @@ from experiments.experiment_utils import (
 # Import model and utils
 from models.GNNLorA import transfer, GNN, act, get_parameter
 
+def create_masks(num_nodes: int, train_ratio: float = 0.6, val_ratio: float = 0.8, device=None):
+    if device is None:
+        device = get_device()
+    indices = torch.randperm(num_nodes, device=device)
+    train_cut = int(train_ratio * num_nodes)
+    val_cut = int(val_ratio * num_nodes)
+    train_mask = torch.zeros(num_nodes, dtype=torch.bool, device=device)
+    val_mask = torch.zeros(num_nodes, dtype=torch.bool, device=device)
+    test_mask = torch.zeros(num_nodes, dtype=torch.bool, device=device)
+    train_mask[indices[:train_cut]] = True
+    val_mask[indices[train_cut:val_cut]] = True
+    test_mask[indices[val_cut:]] = True
+    return train_mask, val_mask, test_mask
 
 def build_args():
     import argparse
@@ -41,15 +55,16 @@ def build_args():
     parser.add_argument("--sup_weight", type=float, default=1.0)
     parser.add_argument("--tau", type=float, default=0.5)
     parser.add_argument("--num_runs", type=int, default=3)
-    parser.add_argument("--output_file", type=str, default="./graphlora_results.xlsx")
+    parser.add_argument("--output_file", type=str, default="/app/results/graphbert_results.xlsx")
     return parser.parse_args()
 
 
 def pretrain_and_save(args, config, pretrain_data):
     """Runs pretraining step and saves GNN weights for transfer() to load."""
     device = torch.device(f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu")
+    
+    start_time = time.time()
 
-    # ✅ Move data to device
     pretrain_data = pretrain_data.to(device)
 
     gnn = GNN(
@@ -69,7 +84,7 @@ def pretrain_and_save(args, config, pretrain_data):
 
     gnn.train()
     decoder.train()
-    for epoch in range(50):
+    for epoch in range(100):
         optimizer.zero_grad()
         out = gnn(pretrain_data.x, pretrain_data.edge_index)  # now both are on GPU
         recon = decoder(out)
@@ -83,56 +98,37 @@ def pretrain_and_save(args, config, pretrain_data):
     model_path = f"./pre_trained_gnn/{args.pretrain_dataset}.{args.pretext}.{config['gnn_type']}.{args.is_reduction}.pth"
     torch.save(gnn.state_dict(), model_path)
     print(f"[Pretrain] Saved GNN checkpoint to {model_path}")
+    print(f"[Pretrain] Completed in {time.time() - start_time:.2f} seconds")
 
 
 
 def run_graphlora_on_dataset(args, config, dataset_name, data, labels):
-    """
-    Runs GraphLoRA on a dataset with pretraining + transfer and returns detailed results.
-    Returns a dict containing classification metrics (and optionally link prediction metrics if available).
-    """
     print(f"\n========== [GraphLoRA] {dataset_name} ==========")
-
-    # Attach labels to dataset (fixes NoneType issue)
+    start_time = time.time()
     if not hasattr(data, "y") or data.y is None:
         data.y = labels
-
-    # Ensure args.test_dataset and args.pretrain_dataset are set per dataset
     args.test_dataset = dataset_name
     args.pretrain_dataset = f"{dataset_name.lower()}_pretrain"
-
-    # Safe config loading
     setting = "few" if args.few else "public"
     if setting in config and dataset_name in config[setting]:
         args = get_parameter(args)
     else:
-        print(f"[Warning] No config found for dataset '{dataset_name}'. Using default hyperparameters.")
         args.wd1, args.wd2, args.wd3 = 0.0, 0.0, 0.0
         args.lr1, args.lr2, args.lr3 = 0.01, 0.01, 0.01
         args.l1, args.l2, args.l3, args.l4 = 1.0, 1.0, 1.0, 1.0
-        args.num_epochs = 50
-
-    # Use dataset-specific checkpoint path
+        args.num_epochs = 30
     model_path = f"./pre_trained_gnn/{args.pretrain_dataset}.{args.pretext}.{config['gnn_type']}.{args.is_reduction}.pth"
-
-    # Pretrain if checkpoint is missing or force_pretrain is set
     if args.force_pretrain or not os.path.exists(model_path):
-        print(f"[Info] Running pretrain stage for {dataset_name}")
         pretrain_and_save(args, config, data)
     else:
         checkpoint = torch.load(model_path, map_location="cpu")
         first_key = next(iter(checkpoint))
         first_weight = checkpoint[first_key]
         if first_weight.shape[1] != data.x.shape[1]:
-            print(f"[Warning] Checkpoint feature dim mismatch "
-                  f"(expected {data.x.shape[1]}, got {first_weight.shape[1]}). Re-pretraining.")
             pretrain_and_save(args, config, data)
-        else:
-            print(f"[Info] Found existing checkpoint for {dataset_name} at {model_path}, using it.")
-
-    # Fine-tune on this dataset and collect metrics
-    print(f"[Debug] Finished pretrain for {dataset_name}, now starting transfer...")
-
+    device = get_device()
+    train_mask, val_mask, test_mask = create_masks(data.num_nodes, device=device)
+    data.train_mask, data.val_mask, data.test_mask = train_mask, val_mask, test_mask
     metrics = transfer(
         args,
         config,
@@ -141,17 +137,6 @@ def run_graphlora_on_dataset(args, config, dataset_name, data, labels):
         pretrain_dataset=data,
         test_dataset=data,
     )
-
-    # Expected `metrics` to be a dict like:
-    # {
-    #   "accuracy": float,
-    #   "precision": float,
-    #   "recall": float,
-    #   "f1": float,
-    #   "auc": float (optional),
-    #   "ap": float (optional)
-    # }
-
     result = {
         "Experiment": dataset_name,
         "Pipeline": "GraphLoRA",
@@ -161,10 +146,9 @@ def run_graphlora_on_dataset(args, config, dataset_name, data, labels):
         "f1": metrics.get("f1"),
         "auc": metrics.get("auc"),
         "ap": metrics.get("ap"),
+        "runtime_sec": time.time() - start_time,
     }
-
     return result
-
 
 def save_results_to_excel(results, output_file):
     # Normalize all dicts so they have the same keys
@@ -190,7 +174,6 @@ def main():
     results = []
     for run in range(1):
         print(f"\n=================== GraphLoRA Run {run} ===================")
-
         # Synthetic Dataset
         data, labels = generate_synthetic_graph(
             num_nodes=args.num_nodes, num_edges=args.num_edges, feature_dim=args.feature_dim
