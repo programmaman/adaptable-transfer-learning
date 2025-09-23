@@ -299,3 +299,62 @@ if __name__ == "__main__":
         return_token_repr=True
     )
     print(out["logits"].shape, out["token_repr"].shape, out["pooled"].shape)  # [B,C], [B,S,d], [B,d]
+
+# models/graph_bert_wrapper.py
+import torch
+import torch.nn as nn
+from models.graph_bert import GraphBERT
+
+
+class GraphBERTNodeWrapper(nn.Module):
+    """
+    Wraps GraphBERT so it behaves like a standard PyG model:
+      forward(x, edge_index) -> logits [N, num_classes]
+    Internally, each node is treated as a sequence of length 1.
+    """
+
+    def __init__(self, feat_dim, num_classes,
+                 d_model=128, n_heads=4, n_layers=3, dropout=0.1):
+        super().__init__()
+        self.graphbert = GraphBERT(
+            feat_dim=feat_dim,
+            num_classes=num_classes,
+            d_model=d_model,
+            n_heads=n_heads,
+            n_layers=n_layers,
+            dropout=dropout,
+            num_role_buckets=16,
+            num_dist_buckets=6,
+            use_anchor_pos=False,
+        )
+        self.d_model = d_model
+        self.num_classes = num_classes
+
+    def forward(self, x, edge_index=None):
+        """
+        Args:
+            x: [N, F] node features
+            edge_index: unused (GraphBERT doesn’t use adjacency here,
+                        but kept for pipeline compatibility)
+        Returns:
+            logits: [N, num_classes]
+        """
+        N, F = x.shape
+        device = x.device
+
+        # treat each node as a length-1 sequence
+        x_seq = x.unsqueeze(1)                        # [N,1,F]
+        mask = torch.ones((N, 1), dtype=torch.bool, device=device)
+        role_ids = torch.zeros((N, 1), dtype=torch.long, device=device)
+
+        logits = self.graphbert(
+            x=x_seq,
+            mask=mask,
+            role_ids=role_ids,
+            attn_bias=None,
+            anchor_pos=None,
+            center_idx=None,
+            return_token_repr=False,
+        )  # [N, num_classes]
+
+        return logits

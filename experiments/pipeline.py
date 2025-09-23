@@ -59,7 +59,7 @@ class Pipeline(ABC):
         start = time.time()
 
         data = self.prepare_data(data)
-
+        data = data.to(self.device)
         # Phase 1: Pretraining
         model = self.pretrain(model, data, pretrain_epochs)
 
@@ -211,6 +211,9 @@ class DefaultPipeline(Pipeline):
         optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
         criterion = torch.nn.CrossEntropyLoss()
 
+        data = data.to(self.device)
+        labels = labels.to(self.device)
+
         logger.info("Fine-tuning on Node Classification")
         for epoch in range(1, epochs + 1):
             model.train()
@@ -231,6 +234,9 @@ class DefaultPipeline(Pipeline):
     def evaluate_classification(self, model, data, labels, mask=None, verbose=False) -> EvaluationResult:
         if mask is None:
             mask = data.test_mask
+
+        labels = labels.to(self.device)
+        mask = mask.to(self.device)
 
         model.eval()
         with torch.no_grad():
@@ -393,7 +399,30 @@ class StructGPipeline(Pipeline):
             lr=lr,
             verbose=verbose,
         )
+        data = data.to(self.device)
+        print("\n=== Phase 2: Pre-training Structural GNN (with internal classifier) ===")
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
+
+        for epoch in range(epochs):
+            model.train()
+            optimizer.zero_grad()
+
+            _, total_loss = model.forward_and_loss(
+                data,
+                neg_sample_size=5,
+                do_node_class=True,
+                do_linkpred=True,
+                do_featrec=True,
+                do_n2v_align=True,
+                train_mask=None,
+            )
+            total_loss.backward()
+            optimizer.step()
+            if epoch % 10 == 0 or epoch == epochs - 1:
+                print(f"[Pretrain Epoch {epoch:03d}] Total Loss: {total_loss.item():.4f}")
+
         return model
+
 
     # ------------------------------
     # Fine-tune for Node Classification
@@ -401,36 +430,33 @@ class StructGPipeline(Pipeline):
     def finetune_classification(
             self, model, data, labels, epochs=30, lr=0.01, weight_decay=5e-4, log_every=10
     ):
-        assert model.num_classes is not None, "Model must define num_classes for classification."
         optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
-        criterion = torch.nn.CrossEntropyLoss()
 
-        logger.info("Fine-tuning StructuralGNN on Node Classification")
+        # Attach labels to data so the model can access them internally
+        data.y = labels.to(self.device)
+        node_indices = torch.arange(data.num_nodes, device=self.device)
+
+        logger.info("Fine-tuning StructuralGNN on Node Classification (internal loss)")
         for epoch in range(1, epochs + 1):
             model.train()
             optimizer.zero_grad()
+
+            # Forward pass through the model
             embeddings = model(
                 data.x.to(self.device),
-                data.edge_index.to(self.device)
+                data.edge_index.to(self.device),
+                node_indices
             )
-            logits = model.classify_nodes(embeddings)
 
-            # --- DEBUG LOGGING ---
-            y_train = labels[data.train_mask]
-            logger.info(f"[Epoch {epoch:03d}] logits shape: {logits.shape}, "
-                        f"num_classes={model.num_classes}")
-            logger.info(f"[Epoch {epoch:03d}] labels shape: {y_train.shape}, "
-                        f"unique labels={torch.unique(y_train)} "
-                        f"(min={y_train.min().item()}, max={y_train.max().item()})")
-            logger.info(f"[Epoch {epoch:03d}] train_mask sum: {data.train_mask.sum().item()}")
-
-            loss = criterion(logits[data.train_mask], y_train.to(self.device))
+            # Internal loss handles classification logic
+            loss = model.node_classification_loss(embeddings, data.y)
             loss.backward()
             optimizer.step()
 
             if epoch % log_every == 0 or epoch == epochs:
                 val_result = self.evaluate_classification(model, data, labels, mask=data.val_mask)
                 logger.info(f"[Epoch {epoch:03d}] Loss {loss.item():.4f} | Val Acc {val_result.accuracy:.4f}")
+
         return model
 
     def evaluate_classification(self, model, data, labels, mask=None, verbose=True) -> EvaluationResult:

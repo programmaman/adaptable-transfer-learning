@@ -1,14 +1,9 @@
 # experiments/run_twitch_transfer.py
 
 import os
-import torch
-import json
-import pandas as pd
-from sklearn.preprocessing import LabelEncoder
-from torch_geometric.data import Data
 
-from experiments.experiment_utils import split_edges_for_link_prediction
 from models.baselines import SimpleGraphSAGE, SimpleGAT, SimpleGNN
+from models.graph_bert import GraphBERTNodeWrapper
 from models.struct_g import StructuralGNN
 from pipeline import StructGPipeline, TransferLearningPipeline, DefaultPipeline  # your StructuralPipeline class
 
@@ -108,6 +103,16 @@ def load_twitch_dataset(prefix, label_col="mature"):
 
     return data, labels, label_encoder
 
+def extract_metrics(result, prefix=""):
+    return {
+        f"{prefix}accuracy": result.accuracy,
+        f"{prefix}precision": result.precision,
+        f"{prefix}recall": result.recall,
+        f"{prefix}f1": result.f1,
+        f"{prefix}auc": result.auc,
+        f"{prefix}classifier_time": result.metadata.get("classifier_time") if result.metadata else None,
+        f"{prefix}total_time": result.metadata.get("total_time") if result.metadata else None,
+    }
 
 
 # ------------------------------
@@ -125,10 +130,12 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # ===========================================================
-    # StructuralGNN runs (what you already had)
-    # ===========================================================
     pipeline = StructGPipeline(seed=42, device=device)
+
+    # ---------------------------
+    # Collect results in a list
+    # ---------------------------
+    results = []
 
     print("\n=== Running Transfer Learning (StructuralGNN): Pretrain on ES → Finetune on RU ===")
     transfer_model = StructuralGNN(
@@ -157,32 +164,12 @@ def main():
     print("Classification:", transfer_cls_results)
     print("Link Prediction:", transfer_lp_results)
 
-    print("\n=== Running Regular Training (StructuralGNN): Train/Eval on RU only ===")
-    regular_model = StructuralGNN(
-        num_nodes=target_data.num_nodes,
-        edge_index=target_data.edge_index,
-        input_dim=target_data.x.size(1),
-        hidden_dim=64,
-        output_dim=32,
-        embedding_dim=128,
-        num_layers=2,
-        use_gat=True,
-        use_gate=True,
-        num_classes=target_labels.unique().numel(),
-        feat_reconstruction=True,
-    ).to(device)
-
-    regular_model, regular_cls_results, regular_lp_results = pipeline.run(
-        data=target_data,
-        labels=target_labels,
-        model=regular_model,
-        pretrain_epochs=50,
-        finetune_epochs=30,
-    )
-
-    print("\n=== StructuralGNN Regular Training Results ===")
-    print("Classification:", regular_cls_results)
-    print("Link Prediction:", regular_lp_results)
+    results.append({
+        "Model": "StructuralGNN",
+        "Mode": "Transfer",
+        **extract_metrics(transfer_cls_results, prefix="cls_"),
+        **extract_metrics(transfer_lp_results, prefix="lp_")
+    })
 
     # ===========================================================
     # Simple Models (DefaultPipeline + TransferLearningPipeline)
@@ -210,23 +197,56 @@ def main():
         print("Classification:", transfer_cls_results)
         print("Link Prediction:", transfer_lp_results)
 
-        print(f"\n=== Running {name} Regular Training: Train/Eval on RU only ===")
-        regular_pipeline = DefaultPipeline(seed=42, device=device)
-        regular_model = ModelClass(
-            in_channels=target_data.x.size(1),
-            out_channels=target_labels.unique().numel()
-        ).to(device)
+        results.append({
+            "Model": name,
+            "Mode": "Transfer",
+            **extract_metrics(transfer_cls_results, prefix="cls_"),
+            **extract_metrics(transfer_lp_results, prefix="lp_")
+        })
 
-        regular_model, regular_cls_results, regular_lp_results = regular_pipeline.run(
-            data=target_data,
-            labels=target_labels,
-            model=regular_model,
-            pretrain_epochs=0,   # no pretraining for DefaultPipeline
-            finetune_epochs=30,
-        )
-        print(f"\n=== {name} Regular Training Results ===")
-        print("Classification:", regular_cls_results)
-        print("Link Prediction:", regular_lp_results)
+    # ===========================================================
+    # GraphBERT (with wrapper + TransferLearningPipeline)
+    # ===========================================================
+    print("\n=== Running GraphBERT Transfer Learning: Pretrain on ES → Finetune on RU ===")
+    transfer_pipeline = TransferLearningPipeline(
+        source_data, source_labels, seed=42, device=device
+    )
+    transfer_model = GraphBERTNodeWrapper(
+        feat_dim=source_data.x.size(1),
+        num_classes=target_labels.unique().numel(),
+        d_model=128,
+        n_heads=4,
+        n_layers=3,
+        dropout=0.1,
+    ).to(device)
+
+    transfer_model, transfer_cls_results, transfer_lp_results = transfer_pipeline.transfer_learning_run(
+        source_data, source_labels,
+        target_data, target_labels,
+        transfer_model,
+        pretrain_epochs=50,
+        finetune_epochs=30,
+    )
+    print("\n=== GraphBERT Transfer Learning Results ===")
+    print("Classification:", transfer_cls_results)
+    print("Link Prediction:", transfer_lp_results)
+
+    results.append({
+        "Model": "GraphBERT",
+        "Mode": "Transfer",
+        **extract_metrics(transfer_cls_results, prefix="cls_"),
+        **extract_metrics(transfer_lp_results, prefix="lp_")
+    })
+
+    # ---------------------------
+    # Save results to Excel
+    # ---------------------------
+    df = pd.DataFrame(results)
+    out_path = os.path.join(os.path.dirname(__file__), "twitch_transfer_results.xlsx")
+    # change path to results
+    out_path = out_path.replace("experiments", "results")
+    df.to_excel(out_path, index=False)
+    print(f"\nResults saved to {out_path}")
 
 
 if __name__ == "__main__":
