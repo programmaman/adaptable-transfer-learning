@@ -20,7 +20,8 @@ from experiments.experiment_utils import (
 )
 
 # Import model and utils
-from models.GNNLorA import transfer, GNN, act, get_parameter
+from models.GNNLorA import transfer, GNN, act, get_parameter, GNNLoRA
+
 
 def create_masks(num_nodes: int, train_ratio: float = 0.6, val_ratio: float = 0.8, device=None):
     if device is None:
@@ -231,6 +232,27 @@ def main():
     # Save results to Excel
     save_results_to_excel(results, args.output_file)
     print(f"\nAll GraphLoRA results saved to {args.output_file}")
+
+import torch
+import torch.nn as nn
+
+
+class GraphLoRAWrapped(nn.Module):
+    def __init__(self, in_dim, out_dim, base_model_path, gnn_type="GCN", num_layers=2, r=8, activation="relu"):
+        super().__init__()
+        self.gnn_frozen = GNN(in_dim, out_dim, act(activation), gnn_type, num_layers)
+        self.gnn_frozen.load_state_dict(torch.load(base_model_path, map_location='cpu'))
+        for p in self.gnn_frozen.parameters():
+            p.requires_grad = False
+        self.gnn_frozen.eval()
+
+        self.gnn_lora = GNNLoRA(in_dim, out_dim, act(activation), self.gnn_frozen,
+                                gnn_type=gnn_type, num_layers=num_layers, r=r)
+        self.classifier = nn.Linear(out_dim, out_dim)  # change this to num_classes if needed
+
+    def forward(self, x, edge_index):
+        emb, _, _ = self.gnn_lora(x, edge_index)
+        return self.classifier(emb)
 
 
 if __name__ == "__main__":
