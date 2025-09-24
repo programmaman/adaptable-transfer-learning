@@ -301,7 +301,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn.dense.linear import Linear
 from typing import Tuple
-from torch import Tensor
+from torch import Tensor, device
 
 
 class GNN(torch.nn.Module):
@@ -627,3 +627,55 @@ def get_parameter(args):
     args.l4 = float(config[setting][args.test_dataset]['l4'])
     args.num_epochs = config[setting][args.test_dataset]['num_epochs']
     return args
+
+
+class GraphLoRAWrapped(nn.Module):
+    def __init__(self, in_dim, out_dim, num_classes, base_model_path,
+                 gnn_type="GCN", num_layers=2, r=8, activation="relu"):
+        super().__init__()
+        self.base_model_path = base_model_path
+
+        self.gnn_frozen = GNN(in_dim, out_dim, act(activation), gnn_type, num_layers)
+
+        if os.path.exists(base_model_path):
+            self.gnn_frozen.load_state_dict(torch.load(base_model_path, map_location='cpu'))
+            for p in self.gnn_frozen.parameters():
+                p.requires_grad = False
+            self.gnn_frozen.eval()
+        else:
+            # Skip loading — will be trained in pipeline.pretrain()
+            print(f"[GraphLoRAWrapped] No checkpoint at {base_model_path}, will train from scratch.")
+
+        self.gnn_lora = GNNLoRA(in_dim, out_dim, act(activation), self.gnn_frozen,
+                                gnn_type=gnn_type, gnn_layer_num=num_layers, r=r)
+        self.classifier = nn.Linear(out_dim, num_classes)
+
+    def forward(self, x, edge_index):
+        emb, _, _ = self.gnn_lora(x, edge_index)
+        logits = self.classifier(emb)
+        return F.normalize(logits, p=2, dim=-1)
+
+    def get_embeddings(self, x, edge_index):
+        emb, _, _ = self.gnn_lora(x, edge_index)
+        return emb
+
+    def reset_with_input_dim(self, new_in_dim: int):
+        """
+        Rebuild gnn_frozen, gnn_lora, and classifier to accept a new input feature size.
+        Keeps the same out_dim, num_classes, gnn_type, layers, r, and activation.
+        """
+        # Save params you’ll need
+        out_dim = self.classifier.out_features
+        num_classes = self.classifier.out_features
+        gnn_type = self.gnn_frozen.gnn_type
+        num_layers = self.gnn_frozen.gnn_layer_num
+        activation = self.gnn_frozen.activation
+        r = self.gnn_lora.conv[0].lin_src[0].out_channels if hasattr(self.gnn_lora.conv[0], "lin_src") else 8
+
+        # Rebuild modules with new input dimension
+        self.gnn_frozen = GNN(new_in_dim, out_dim, activation, gnn_type, num_layers)
+        self.gnn_lora = GNNLoRA(new_in_dim, out_dim, activation, self.gnn_frozen,
+                                gnn_type=gnn_type, gnn_layer_num=num_layers, r=r)
+        self.classifier = nn.Linear(out_dim, num_classes).to(self.classifier.weight.device)
+
+

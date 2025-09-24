@@ -1,12 +1,17 @@
 import logging
+import os
 import random
 import time
 from abc import ABC
 
 import numpy as np
 import torch
+from sklearn.decomposition import TruncatedSVD
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, \
     average_precision_score
+from torch import nn
+from torch_geometric.transforms import SVDFeatureReduction
+import torch.nn.functional as F
 
 from experiments.experiment_utils import EvaluationResult, split_edges_for_link_prediction
 
@@ -39,9 +44,10 @@ class Pipeline(ABC):
         self.metadata = {"seed": self.seed}
 
         logger.info(f"Pipeline initialized with seed {self.seed} on device {self.device}")
-        #Check torch device is cuda if available
+        # Check torch device is cuda if available
         if torch.cuda.is_available() and self.device.type != 'cuda':
-            logger.warning("CUDA is available but the device is not set to 'cuda'. This may lead to suboptimal performance.")
+            logger.warning(
+                "CUDA is available but the device is not set to 'cuda'. This may lead to suboptimal performance.")
 
     def run(self, data, labels, model, pretrain_epochs=100, finetune_epochs=30):
         """
@@ -192,7 +198,6 @@ class Pipeline(ABC):
         raise NotImplementedError("evaluate_link_prediction() must be implemented by a subclass.")
 
 
-
 from experiments.experiment_utils import EvaluationResult, sample_negative_edges
 
 
@@ -335,6 +340,7 @@ class DefaultPipeline(Pipeline):
             f1=f1, auc=auc, ap=ap, preds=preds
         )
 
+
 # pipeline.py (continue after DefaultPipeline)
 
 class TransferLearningPipeline(DefaultPipeline):
@@ -381,6 +387,7 @@ class TransferLearningPipeline(DefaultPipeline):
 
         return model
 
+
 class StructGPipeline(Pipeline):
     """
     A pipeline for StructuralGNN.
@@ -422,7 +429,6 @@ class StructGPipeline(Pipeline):
                 print(f"[Pretrain Epoch {epoch:03d}] Total Loss: {total_loss.item():.4f}")
 
         return model
-
 
     # ------------------------------
     # Fine-tune for Node Classification
@@ -490,7 +496,7 @@ class StructGPipeline(Pipeline):
     # Fine-tune for Link Prediction
     # ------------------------------
     def finetune_link_prediction(
-        self, model, data, rem_edge_list, epochs=30, lr=0.01, weight_decay=5e-4, neg_sample_size=5, log_every=10
+            self, model, data, rem_edge_list, epochs=30, lr=0.01, weight_decay=5e-4, neg_sample_size=5, log_every=10
     ):
         logger.info("Fine-tuning StructuralGNN for Link Prediction")
         optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
@@ -528,7 +534,8 @@ class StructGPipeline(Pipeline):
         labels = torch.cat([torch.ones_like(pos_scores), torch.zeros_like(neg_scores)]).cpu()
         preds = (torch.sigmoid(scores) > 0.5).float()
 
-        from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, average_precision_score
+        from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, \
+            average_precision_score
 
         acc = accuracy_score(labels, preds)
         precision = precision_score(labels, preds, zero_division=0)
@@ -538,8 +545,83 @@ class StructGPipeline(Pipeline):
         ap = average_precision_score(labels, scores)
 
         if verbose:
-            logger.info(f"LP Eval | Acc {acc:.4f} | Prec {precision:.4f} | Recall {recall:.4f} | F1 {f1:.4f} | AUC {auc:.4f} | AP {ap:.4f}")
+            logger.info(
+                f"LP Eval | Acc {acc:.4f} | Prec {precision:.4f} | Recall {recall:.4f} | F1 {f1:.4f} | AUC {auc:.4f} | AP {ap:.4f}")
 
         return EvaluationResult(acc, precision, recall, f1, auc, ap, preds)
 
 
+
+class GraphLoRAPipeline(DefaultPipeline):
+    def __init__(self, base_model_path, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.base_model_path = base_model_path
+
+    class GraphLoRAPipeline(DefaultPipeline):
+        def __init__(self, base_model_path, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.base_model_path = base_model_path
+
+        def pretrain(self, model, data, epochs=100, lr=0.01, weight_decay=5e-4,
+                     feat_reduce_dim=256, safety_factor=0.7):
+            """
+            Memory-aware pretraining with optional feature reduction.
+
+            Args:
+                model: GraphLoRAWrapped backbone.
+                data: PyG Data object.
+                epochs: Number of pretrain epochs.
+                lr, weight_decay: Optimizer params.
+                feat_reduce_dim: Dim for SVD reduction if needed.
+                safety_factor: Fraction of free GPU memory allowed.
+            """
+            logger.info("Pretraining GraphLoRA backbone with feature reconstruction")
+
+            # --- Step 1: Memory Check and Optional Feature Reduction ---
+            N, D = data.x.size()
+            required_bytes = N * D * 4 * 2  # float32, input + recon
+            logger.info(f"Feature matrix size: {N} nodes × {D} features")
+            logger.info(f"Estimated memory required for full reconstruction: {required_bytes / 1e9:.2f} GB")
+
+            use_reduction = False
+            if torch.cuda.is_available():
+                free_mem = torch.cuda.mem_get_info()[0]
+                if required_bytes > free_mem * safety_factor:
+                    use_reduction = True
+
+            if use_reduction:
+                logger.info(f"[Pretrain] Reducing features from {D} to {feat_reduce_dim}")
+                x_cpu = data.x.cpu().numpy()
+                svd = TruncatedSVD(n_components=feat_reduce_dim)
+                x_reduced = torch.tensor(svd.fit_transform(x_cpu), dtype=torch.float32)
+                data = data.__class__(x=x_reduced.to(self.device), edge_index=data.edge_index)
+                model.reset_with_input_dim(data.x.size(1))
+
+            decoder = nn.Linear(model.gnn_frozen.conv[-1].out_channels, data.x.size(1)).to(self.device)
+            optimizer = torch.optim.Adam(
+                list(model.gnn_frozen.parameters()) + list(decoder.parameters()),
+                lr=lr, weight_decay=weight_decay
+            )
+
+            data = data.to(self.device)
+
+            # --- Step 2: Training Loop (Full-batch) ---
+            for epoch in range(epochs):
+                model.gnn_frozen.train()
+                decoder.train()
+                optimizer.zero_grad()
+
+                emb = model.gnn_frozen(data.x, data.edge_index)
+                recon = decoder(emb)
+                loss = F.mse_loss(recon, data.x)
+                loss.backward()
+                optimizer.step()
+
+                if (epoch + 1) % 10 == 0:
+                    logger.info(f"[Pretrain {epoch + 1:03d}] Loss {loss.item():.4f}")
+
+            # --- Step 3: Save Backbone ---
+            os.makedirs(os.path.dirname(self.base_model_path), exist_ok=True)
+            torch.save(model.gnn_frozen.state_dict(), self.base_model_path)
+            logger.info(f"Saved pretrained weights to {self.base_model_path}")
+            return model

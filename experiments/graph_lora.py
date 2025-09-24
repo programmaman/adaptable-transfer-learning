@@ -56,7 +56,7 @@ def build_args():
     parser.add_argument("--sup_weight", type=float, default=1.0)
     parser.add_argument("--tau", type=float, default=0.5)
     parser.add_argument("--num_runs", type=int, default=3)
-    parser.add_argument("--output_file", type=str, default="/app/results/graphbert_results.xlsx")
+    parser.add_argument("--output_file", type=str, default="/app/results/graphlora_results.xlsx")
     return parser.parse_args()
 
 
@@ -183,37 +183,37 @@ def main():
         synth_result.update({"Experiment": "Synthetic", "Run": run})
         results.append(synth_result)
 
-        # Facebook Dataset
-        fb_dir = os.path.join(os.path.dirname(__file__), "../datasets/facebook_large")
-        fb_data, fb_labels, _ = load_musae_facebook_dataset(
-            os.path.join(fb_dir, "musae_facebook_edges.csv"),
-            os.path.join(fb_dir, "musae_facebook_features.json"),
-            os.path.join(fb_dir, "musae_facebook_target.csv"),
-        )
-        fb_result = run_graphlora_on_dataset(args, config, "Facebook", fb_data, fb_labels)
-        fb_result.update({"Experiment": "Facebook", "Run": run})
-        results.append(fb_result)
-
-        # Email-EU-Core
-        email_dir = os.path.join(os.path.dirname(__file__), "../datasets/email-eu-core")
-        email_data, email_labels = load_email_eu_core_dataset(
-            os.path.join(email_dir, "email-Eu-core.txt"),
-            os.path.join(email_dir, "email-Eu-core-department-labels.txt"),
-        )
-        email_result = run_graphlora_on_dataset(args, config, "Email-EU-Core", email_data, email_labels)
-        email_result.update({"Experiment": "Email-EU-Core", "Run": run})
-        results.append(email_result)
-
-        # GitHub
-        gh_dir = os.path.join(os.path.dirname(__file__), "../datasets/git_web_ml")
-        gh_data, gh_labels, _ = load_musae_github_dataset(
-            os.path.join(gh_dir, "musae_git_edges.csv"),
-            os.path.join(gh_dir, "musae_git_features.json"),
-            os.path.join(gh_dir, "musae_git_target.csv"),
-        )
-        gh_result = run_graphlora_on_dataset(args, config, "GitHub", gh_data, gh_labels)
-        gh_result.update({"Experiment": "GitHub", "Run": run})
-        results.append(gh_result)
+        # # Facebook Dataset
+        # fb_dir = os.path.join(os.path.dirname(__file__), "../datasets/facebook_large")
+        # fb_data, fb_labels, _ = load_musae_facebook_dataset(
+        #     os.path.join(fb_dir, "musae_facebook_edges.csv"),
+        #     os.path.join(fb_dir, "musae_facebook_features.json"),
+        #     os.path.join(fb_dir, "musae_facebook_target.csv"),
+        # )
+        # fb_result = run_graphlora_on_dataset(args, config, "Facebook", fb_data, fb_labels)
+        # fb_result.update({"Experiment": "Facebook", "Run": run})
+        # results.append(fb_result)
+        #
+        # # Email-EU-Core
+        # email_dir = os.path.join(os.path.dirname(__file__), "../datasets/email-eu-core")
+        # email_data, email_labels = load_email_eu_core_dataset(
+        #     os.path.join(email_dir, "email-Eu-core.txt"),
+        #     os.path.join(email_dir, "email-Eu-core-department-labels.txt"),
+        # )
+        # email_result = run_graphlora_on_dataset(args, config, "Email-EU-Core", email_data, email_labels)
+        # email_result.update({"Experiment": "Email-EU-Core", "Run": run})
+        # results.append(email_result)
+        #
+        # # GitHub
+        # gh_dir = os.path.join(os.path.dirname(__file__), "../datasets/git_web_ml")
+        # gh_data, gh_labels, _ = load_musae_github_dataset(
+        #     os.path.join(gh_dir, "musae_git_edges.csv"),
+        #     os.path.join(gh_dir, "musae_git_features.json"),
+        #     os.path.join(gh_dir, "musae_git_target.csv"),
+        # )
+        # gh_result = run_graphlora_on_dataset(args, config, "GitHub", gh_data, gh_labels)
+        # gh_result.update({"Experiment": "GitHub", "Run": run})
+        # results.append(gh_result)
 
         # Deezer
         deezer_dir = os.path.join(os.path.dirname(__file__), "../datasets/deezer_europe")
@@ -232,27 +232,6 @@ def main():
     # Save results to Excel
     save_results_to_excel(results, args.output_file)
     print(f"\nAll GraphLoRA results saved to {args.output_file}")
-
-import torch
-import torch.nn as nn
-
-
-class GraphLoRAWrapped(nn.Module):
-    def __init__(self, in_dim, out_dim, base_model_path, gnn_type="GCN", num_layers=2, r=8, activation="relu"):
-        super().__init__()
-        self.gnn_frozen = GNN(in_dim, out_dim, act(activation), gnn_type, num_layers)
-        self.gnn_frozen.load_state_dict(torch.load(base_model_path, map_location='cpu'))
-        for p in self.gnn_frozen.parameters():
-            p.requires_grad = False
-        self.gnn_frozen.eval()
-
-        self.gnn_lora = GNNLoRA(in_dim, out_dim, act(activation), self.gnn_frozen,
-                                gnn_type=gnn_type, num_layers=num_layers, r=r)
-        self.classifier = nn.Linear(out_dim, out_dim)  # change this to num_classes if needed
-
-    def forward(self, x, edge_index):
-        emb, _, _ = self.gnn_lora(x, edge_index)
-        return self.classifier(emb)
 
 
 if __name__ == "__main__":
