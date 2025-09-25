@@ -156,6 +156,7 @@ def run_all_graph_analyses():
     rows.append(analyze_graph_structure("Deezer", data, labels))
 
 
+
     df = pd.DataFrame(rows)
     df.to_csv("graph_structure_stats.csv", index=False)
     print("✅ Saved graph stats to graph_structure_stats.csv")

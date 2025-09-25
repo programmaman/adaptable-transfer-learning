@@ -50,6 +50,91 @@ def generate_task_labels(data, num_classes=5):
     labels = torch.tensor(kmeans.labels_, dtype=torch.long)
     return labels
 
+def load_twitch_dataset(prefix, label_col="mature"):
+    """
+    Loads Twitch-TL dataset given a prefix like 'musae_ES' or 'musae_RU'.
+    Expects files:
+      {prefix}_edges.csv
+      {prefix}_features.json
+      {prefix}_target.csv
+
+    Args:
+        label_col (str): which column in *_target.csv to use as classification label.
+                         (e.g., 'mature' or 'partner')
+    """
+    edge_path = f"{prefix}_edges.csv"
+    features_path = f"{prefix}_features.json"
+    target_path = f"{prefix}_target.csv"
+
+    # ------------------------
+    # Load edges
+    # ------------------------
+    edges_df = pd.read_csv(edge_path)
+    edge_index = torch.tensor(edges_df.values.T, dtype=torch.long)
+
+    # ------------------------
+    # Load features
+    # ------------------------
+    with open(features_path, "r") as f:
+        features_dict = json.load(f)
+
+    node_ids = sorted(set(int(k) for k in features_dict.keys()))
+    node_id_map = {nid: i for i, nid in enumerate(node_ids)}
+
+    num_nodes = len(node_ids)
+    num_features = max(f for feats in features_dict.values() for f in feats) + 1
+    x = torch.zeros((num_nodes, num_features))
+    for raw_id, feats in features_dict.items():
+        mapped_id = node_id_map[int(raw_id)]
+        x[mapped_id, feats] = 1.0
+
+    # ------------------------
+    # Load labels
+    # ------------------------
+    target_df = pd.read_csv(target_path)
+
+    # Use new_id instead of id for mapping
+    if "new_id" not in target_df.columns:
+        raise ValueError(f"'new_id' column not found in {target_path}")
+
+    target_df = target_df[target_df["new_id"].isin(node_ids)]
+    target_df["mapped_id"] = target_df["new_id"].map(node_id_map)
+
+    if label_col not in target_df.columns:
+        raise ValueError(
+            f"Column '{label_col}' not found in {target_path}. "
+            f"Available columns: {list(target_df.columns)}"
+        )
+
+    label_encoder = LabelEncoder()
+    labels = torch.full((num_nodes,), -1, dtype=torch.long)
+
+    encoded_labels = label_encoder.fit_transform(target_df[label_col].astype(str))
+    labels[target_df["mapped_id"]] = torch.tensor(encoded_labels, dtype=torch.long)
+
+    # ------------------------
+    # Filter edges to mapped nodes
+    # ------------------------
+    edge_list = edge_index.t().tolist()
+    filtered_edges = [
+        [node_id_map[src], node_id_map[dst]]
+        for src, dst in edge_list
+        if src in node_id_map and dst in node_id_map
+    ]
+    edge_index = torch.tensor(filtered_edges, dtype=torch.long).t().contiguous()
+
+    # ------------------------
+    # Build Data object
+    # ------------------------
+    data = Data(x=x, edge_index=edge_index)
+
+    print(f"Loaded graph {prefix}")
+    print(f"  → {data.num_nodes} nodes, {data.num_edges} edges, {x.size(1)} features")
+    print(f"  → Label coverage: {(labels >= 0).sum().item()} / {len(labels)} nodes labeled")
+    print(f"  → Label column: {label_col} | Classes: {list(label_encoder.classes_)}")
+
+    return data, labels, label_encoder
+
 def load_deezer_europe_dataset(edge_path, features_path, target_path):
     # --- Load edges ---
     edges_df = pd.read_csv(edge_path)

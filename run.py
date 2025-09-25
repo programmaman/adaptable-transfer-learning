@@ -18,4 +18,6 @@ if __name__ == "__main__":
     run("experiments.experiment_runner")
     run("experiments.struct_g_sweep")
     run("experiments.struct_g_analysis")
+    run("experiments.run_graphlora_pipeline")
+    run("experiments.transfer_learning_experiment")
     print("✓ all stages finished")
