@@ -2,10 +2,13 @@
 
 import os
 
+from experiments.graph_lora import build_args
+from models.GNNLorA import GraphLoRAWrapped
 from models.baselines import SimpleGraphSAGE, SimpleGAT, SimpleGNN
 from models.graph_bert import GraphBERTNodeWrapper
 from models.struct_g import StructuralGNN
-from pipeline import StructGPipeline, TransferLearningPipeline, DefaultPipeline  # your StructuralPipeline class
+from pipeline import StructGPipeline, TransferLearningPipeline, DefaultPipeline, \
+    GraphLoRAPipeline  # your StructuralPipeline class
 
 
 # ------------------------------
@@ -237,6 +240,79 @@ def main():
         **extract_metrics(transfer_cls_results, prefix="cls_"),
         **extract_metrics(transfer_lp_results, prefix="lp_")
     })
+
+    # ===========================================================
+    # GraphLoRA (Custom Pretrain + Standard Finetune)
+    # ===========================================================
+    print("\n=== Running GraphLoRA Transfer Learning: Pretrain on ES → Finetune on RU ===")
+
+    args = build_args()
+    base_model_path = "./pre_trained_gnn/twitch_graphlora_backbone.pth"
+
+    # Step 1: Initialize GraphLoRA model
+    transfer_model = GraphLoRAWrapped(
+        in_dim=source_data.x.size(1),
+        out_dim=64,
+        num_classes=target_labels.unique().numel(),
+        base_model_path=base_model_path,
+        gnn_type="GAT",
+        num_layers=2,
+        r=8,
+        activation="relu",
+    ).to(device)
+
+    # Step 2: Pretrain on source data using GraphLoRA pretraining logic
+    pretrain_pipeline = GraphLoRAPipeline(base_model_path=base_model_path, seed=42, device=device)
+    source_data = pretrain_pipeline.prepare_data(source_data)
+    transfer_model = pretrain_pipeline.pretrain(
+        transfer_model,
+        data=source_data,
+        epochs=100
+    )
+
+    # Step 3: Finetune and evaluate on target using DefaultPipeline
+    default_pipeline = DefaultPipeline(seed=42, device=device)
+    target_data = default_pipeline.prepare_data(target_data)
+
+    transfer_model = default_pipeline.finetune_classification(
+        transfer_model,
+        target_data,
+        target_labels,
+        epochs=30,
+    )
+    transfer_cls_results = default_pipeline.evaluate_classification(
+        transfer_model,
+        target_data,
+        target_labels,
+    )
+
+    # Step 4: Link Prediction fine-tuning and evaluation
+    from experiments.experiment_utils import split_edges_for_link_prediction
+    target_data.edge_index, rem_edge_list = split_edges_for_link_prediction(target_data.edge_index)
+
+    transfer_model = default_pipeline.finetune_link_prediction(
+        transfer_model,
+        target_data,
+        rem_edge_list,
+        epochs=30,
+    )
+    transfer_lp_results = default_pipeline.evaluate_link_prediction(
+        transfer_model,
+        target_data,
+        rem_edge_list,
+    )
+
+    print("\n=== GraphLoRA Transfer Learning Results ===")
+    print("Classification:", transfer_cls_results)
+    print("Link Prediction:", transfer_lp_results)
+
+    results.append({
+        "Model": "GraphLoRA",
+        "Mode": "Transfer",
+        **extract_metrics(transfer_cls_results, prefix="cls_"),
+        **extract_metrics(transfer_lp_results, prefix="lp_")
+    })
+
 
     # ---------------------------
     # Save results to Excel

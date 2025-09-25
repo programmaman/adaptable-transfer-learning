@@ -645,7 +645,7 @@ class GraphLoRAWrapped(nn.Module):
         else:
             # Skip loading — will be trained in pipeline.pretrain()
             print(f"[GraphLoRAWrapped] No checkpoint at {base_model_path}, will train from scratch.")
-
+        print("r is set to {}".format(r))
         self.gnn_lora = GNNLoRA(in_dim, out_dim, act(activation), self.gnn_frozen,
                                 gnn_type=gnn_type, gnn_layer_num=num_layers, r=r)
         self.classifier = nn.Linear(out_dim, num_classes)

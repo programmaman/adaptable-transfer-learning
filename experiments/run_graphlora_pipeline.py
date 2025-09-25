@@ -1,5 +1,7 @@
 import os
 import time
+
+import pandas as pd
 import yaml
 import torch
 from yaml import SafeLoader
@@ -17,6 +19,45 @@ from experiments.experiment_utils import (
 )
 from models.GNNLorA import GraphLoRAWrapped
 
+import pandas as pd
+import os
+
+
+def summarize_results(input_file="results.csv", output_file="reduced_results_summary.csv"):
+    ext = os.path.splitext(input_file)[1].lower()
+
+    if ext == ".csv":
+        df = pd.read_csv(input_file)
+    elif ext == ".xlsx":
+        df = pd.read_excel(input_file)
+    else:
+        raise ValueError(f"Unsupported file type: {ext}. Only .csv and .xlsx are supported.")
+
+    grouped = df.groupby("Dataset")
+    metrics = [
+        "Classification_Acc", "Classification_F1",
+        "LinkPred_AUC", "LinkPred_AP",
+        "Metadata.classifier_time", "Metadata.link_pred_time", "Metadata.total_time"
+    ]
+
+    mean_df = grouped[metrics].mean().rename(columns=lambda x: x + "_mean")
+    std_df = grouped[metrics].std().rename(columns=lambda x: x + "_std")
+    summary_df = pd.concat([mean_df, std_df], axis=1)
+
+    def format_metric(mean, std):
+        return f"{mean:.4f} ± {std:.4f}"
+
+    for metric in metrics:
+        summary_df[metric] = [
+            format_metric(m, s)
+            for m, s in zip(summary_df[metric + "_mean"], summary_df[metric + "_std"])
+        ]
+
+    summary_df = summary_df[metrics]
+    summary_df.reset_index(inplace=True)
+    print(summary_df.to_string(index=False))
+    summary_df.to_csv(output_file, index=False)
+
 
 def run_graphlora_pipeline(args):
     device = torch.device(f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu")
@@ -26,7 +67,10 @@ def run_graphlora_pipeline(args):
         config = yaml.load(f, Loader=SafeLoader)
 
     results = []
-    for run in range(1):
+
+    NUM_RUNS = 3
+
+    for run in range(NUM_RUNS):
         print(f"\n=================== GraphLoRA Pipeline Run {run} ===================")
 
         # ---------------- Synthetic ----------------
@@ -83,11 +127,16 @@ def run_graphlora_pipeline(args):
         results.append(dz_result)
 
         print(f"Run {run} completed.")
-        time.sleep(30)  # let GPU cool
+        time.sleep(30)
 
     # Save results
     save_results_to_excel(results, args.output_file)
     print(f"\nAll GraphLoRA pipeline results saved to {args.output_file}")
+
+    # Run summary
+    summarize_results(input_file=args.output_file, output_file="summary_" + args.output_file)
+
+
 
 
 def run_single_experiment(args, config, name, data, labels, device):
@@ -108,8 +157,10 @@ def run_single_experiment(args, config, name, data, labels, device):
         activation=config.get("activation", "relu"),
     ).to(device)
 
+    random_int = int(time.time())
+
     # Use GraphLoRAPipeline instead of DefaultPipeline
-    pipeline = GraphLoRAPipeline(base_model_path, seed=42, device=device)
+    pipeline = GraphLoRAPipeline(base_model_path, seed=random_int, device=device)
     model, class_results, lp_results = pipeline.run(
         data, labels, model,
         pretrain_epochs=100,
@@ -127,6 +178,11 @@ def run_single_experiment(args, config, name, data, labels, device):
     }
 
 
+
+
+
 if __name__ == "__main__":
-    args = build_args()
-    run_graphlora_pipeline(args)
+    # args = build_args()
+    # run_graphlora_pipeline(args)
+    # Just excel
+    summarize_results(input_file="/app/results/graphlora_results.xlsx", output_file="results/summary_graphlora.csv")

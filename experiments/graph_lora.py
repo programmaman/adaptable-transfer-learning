@@ -183,37 +183,37 @@ def main():
         synth_result.update({"Experiment": "Synthetic", "Run": run})
         results.append(synth_result)
 
-        # # Facebook Dataset
-        # fb_dir = os.path.join(os.path.dirname(__file__), "../datasets/facebook_large")
-        # fb_data, fb_labels, _ = load_musae_facebook_dataset(
-        #     os.path.join(fb_dir, "musae_facebook_edges.csv"),
-        #     os.path.join(fb_dir, "musae_facebook_features.json"),
-        #     os.path.join(fb_dir, "musae_facebook_target.csv"),
-        # )
-        # fb_result = run_graphlora_on_dataset(args, config, "Facebook", fb_data, fb_labels)
-        # fb_result.update({"Experiment": "Facebook", "Run": run})
-        # results.append(fb_result)
-        #
-        # # Email-EU-Core
-        # email_dir = os.path.join(os.path.dirname(__file__), "../datasets/email-eu-core")
-        # email_data, email_labels = load_email_eu_core_dataset(
-        #     os.path.join(email_dir, "email-Eu-core.txt"),
-        #     os.path.join(email_dir, "email-Eu-core-department-labels.txt"),
-        # )
-        # email_result = run_graphlora_on_dataset(args, config, "Email-EU-Core", email_data, email_labels)
-        # email_result.update({"Experiment": "Email-EU-Core", "Run": run})
-        # results.append(email_result)
-        #
-        # # GitHub
-        # gh_dir = os.path.join(os.path.dirname(__file__), "../datasets/git_web_ml")
-        # gh_data, gh_labels, _ = load_musae_github_dataset(
-        #     os.path.join(gh_dir, "musae_git_edges.csv"),
-        #     os.path.join(gh_dir, "musae_git_features.json"),
-        #     os.path.join(gh_dir, "musae_git_target.csv"),
-        # )
-        # gh_result = run_graphlora_on_dataset(args, config, "GitHub", gh_data, gh_labels)
-        # gh_result.update({"Experiment": "GitHub", "Run": run})
-        # results.append(gh_result)
+        # Facebook Dataset
+        fb_dir = os.path.join(os.path.dirname(__file__), "../datasets/facebook_large")
+        fb_data, fb_labels, _ = load_musae_facebook_dataset(
+            os.path.join(fb_dir, "musae_facebook_edges.csv"),
+            os.path.join(fb_dir, "musae_facebook_features.json"),
+            os.path.join(fb_dir, "musae_facebook_target.csv"),
+        )
+        fb_result = run_graphlora_on_dataset(args, config, "Facebook", fb_data, fb_labels)
+        fb_result.update({"Experiment": "Facebook", "Run": run})
+        results.append(fb_result)
+
+        # Email-EU-Core
+        email_dir = os.path.join(os.path.dirname(__file__), "../datasets/email-eu-core")
+        email_data, email_labels = load_email_eu_core_dataset(
+            os.path.join(email_dir, "email-Eu-core.txt"),
+            os.path.join(email_dir, "email-Eu-core-department-labels.txt"),
+        )
+        email_result = run_graphlora_on_dataset(args, config, "Email-EU-Core", email_data, email_labels)
+        email_result.update({"Experiment": "Email-EU-Core", "Run": run})
+        results.append(email_result)
+
+        # GitHub
+        gh_dir = os.path.join(os.path.dirname(__file__), "../datasets/git_web_ml")
+        gh_data, gh_labels, _ = load_musae_github_dataset(
+            os.path.join(gh_dir, "musae_git_edges.csv"),
+            os.path.join(gh_dir, "musae_git_features.json"),
+            os.path.join(gh_dir, "musae_git_target.csv"),
+        )
+        gh_result = run_graphlora_on_dataset(args, config, "GitHub", gh_data, gh_labels)
+        gh_result.update({"Experiment": "GitHub", "Run": run})
+        results.append(gh_result)
 
         # Deezer
         deezer_dir = os.path.join(os.path.dirname(__file__), "../datasets/deezer_europe")
