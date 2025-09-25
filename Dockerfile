@@ -6,4 +6,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . /app
 COPY /experiments/config.yaml /app/config.yaml
 ENV PYTHONPATH="/app"
-CMD ["python", "experiments/run_graphlora_pipeline.py"]
+CMD ["python", "run.py"]

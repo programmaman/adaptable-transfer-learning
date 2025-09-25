@@ -15,8 +15,9 @@ def run(module_name):
         raise RuntimeError(f"No entry point found in {module_name}")
 
 if __name__ == "__main__":
-    # run("experiments.experiment_runner")
-    # run("experiments.struct_g_sweep")
-    # run("experiments.struct_g_analysis")
-    run("experiments.gppt_experiment_runner")
+    run("experiments.experiment_runner")
+    run("experiments.struct_g_sweep")
+    run("experiments.struct_g_analysis")
+    run("experiments.run_graphlora_pipeline")
+    run("experiments.transfer_learning_experiment")
     print("✓ all stages finished")
