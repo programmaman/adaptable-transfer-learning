@@ -6,7 +6,7 @@ from experiments.experiment_utils import split_edges_for_link_prediction, sample
 
 from experiments.experiment_utils import EvaluationResult
 from models.deep_gcn import (
-    StructuralGcn,
+    ThreeLayerGCN,
     GnnClassifierHead,
     train_structural_feature_predictor,
     fine_tune_model,
@@ -150,7 +150,7 @@ def run_structural_gcn_pipeline(data, labels, hidden_dim=64, mid_dim=32, pretrai
 
     in_dim = data.x.size(1)
     pretrain_start_time = time.time()
-    pretrain_model = StructuralGcn(in_channels=in_dim, hidden_channels=hidden_dim, mid_channels=mid_dim)
+    pretrain_model = ThreeLayerGCN(in_channels=in_dim, hidden_channels=hidden_dim, mid_channels=mid_dim)
     pretrain_model = train_structural_feature_predictor(pretrain_model, data, epochs=pretrain_epochs, device=device)
     pretrain_time = time.time() - pretrain_start_time
 

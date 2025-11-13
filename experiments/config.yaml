@@ -1,0 +1,14 @@
+# GraphLoRA experiment config
+
+output_dim: 256         # hidden dimension / embedding size
+gnn_type: GAT           # choices: GCN, GAT, etc.
+num_layers: 2
+activation: relu
+
+# Optional training params (if you expand later)
+learning_rate: 0.001
+weight_decay: 0.0001
+drop_edge_rate: 0.4
+drop_feature_rate: 0.1
+tau: 0.5
+num_epochs: 1000

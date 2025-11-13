@@ -6,12 +6,11 @@ from abc import ABC
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from sklearn.decomposition import TruncatedSVD
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, \
     average_precision_score
 from torch import nn
-from torch_geometric.transforms import SVDFeatureReduction
-import torch.nn.functional as F
 
 from experiments.experiment_utils import EvaluationResult, split_edges_for_link_prediction
 
@@ -66,6 +65,7 @@ class Pipeline(ABC):
 
         data = self.prepare_data(data)
         data = data.to(self.device)
+
         # Phase 1: Pretraining
         model = self.pretrain(model, data, pretrain_epochs)
 
@@ -196,6 +196,8 @@ class Pipeline(ABC):
         Subclasses should override with LP evaluation.
         """
         raise NotImplementedError("evaluate_link_prediction() must be implemented by a subclass.")
+
+
 
 
 from experiments.experiment_utils import EvaluationResult, sample_negative_edges
@@ -549,7 +551,6 @@ class StructGPipeline(Pipeline):
                 f"LP Eval | Acc {acc:.4f} | Prec {precision:.4f} | Recall {recall:.4f} | F1 {f1:.4f} | AUC {auc:.4f} | AP {ap:.4f}")
 
         return EvaluationResult(acc, precision, recall, f1, auc, ap, preds)
-
 
 
 class GraphLoRAPipeline(DefaultPipeline):

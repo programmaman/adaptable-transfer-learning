@@ -17,7 +17,7 @@ from experiments.experiment_utils import (
     load_deezer_europe_dataset,
 
 )
-from models.GNNLorA import GraphLoRAWrapped
+from models.graphlora import GraphLoRAWrapped
 
 import pandas as pd
 import os

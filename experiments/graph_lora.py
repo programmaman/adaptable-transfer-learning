@@ -20,7 +20,7 @@ from experiments.experiment_utils import (
 )
 
 # Import model and utils
-from models.GNNLorA import transfer, GNN, act, get_parameter, GNNLoRA
+from models.graphlora import transfer, GNN, act, get_parameter, GNNLoRA
 
 
 def create_masks(num_nodes: int, train_ratio: float = 0.6, val_ratio: float = 0.8, device=None):

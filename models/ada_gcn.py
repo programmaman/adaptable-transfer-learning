@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class SimpleGCN(nn.Module):
+class AdaGCN(nn.Module):
     """
     A simple GCN implementation for use in AdaGCNModel.
     """
@@ -24,7 +24,7 @@ class AdaGCNModel(nn.Module):
         super().__init__()
         self.learners = nn.ModuleList(
             [
-                SimpleGCN(in_channels, out_channels)
+                AdaGCN(in_channels, out_channels)
                 for _ in range(num_learners)
             ]
         )

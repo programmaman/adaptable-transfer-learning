@@ -2,7 +2,7 @@ import torch
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 
 from experiments.experiment_utils import EvaluationResult, sample_negative_edges, split_edges_for_link_prediction
-from models.baselines import SimpleGAT
+from models.gat import GAT
 
 
 # ------------------------
@@ -51,8 +51,8 @@ def initialize_models(in_dim, num_classes, heads, device):
       - A classification model with output dimension equals to num_classes.
     Moves both models to device.
     """
-    pretrain_model = SimpleGAT(in_channels=in_dim, out_channels=1, heads=heads).to(device)
-    class_model = SimpleGAT(in_channels=in_dim, out_channels=num_classes, heads=heads).to(device)
+    pretrain_model = GAT(in_channels=in_dim, out_channels=1, heads=heads).to(device)
+    class_model = GAT(in_channels=in_dim, out_channels=num_classes, heads=heads).to(device)
     return pretrain_model, class_model
 
 

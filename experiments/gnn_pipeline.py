@@ -4,7 +4,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
     average_precision_score
 
 from experiments.experiment_utils import EvaluationResult, set_global_seed
-from models.baselines import SimpleGNN
+from models.gcn import GCN
 
 
 def prepare_data(data, train_ratio=0.6, val_ratio=0.2, seed=None):
@@ -35,8 +35,8 @@ def initialize_models(in_dim, num_classes):
     """
     Creates two SimpleGNN instances: one for regression pretraining, one for classification fine-tuning.
     """
-    pretrain_model = SimpleGNN(in_channels=in_dim, out_channels=1)
-    class_model = SimpleGNN(in_channels=in_dim, out_channels=num_classes)
+    pretrain_model = GCN(in_channels=in_dim, out_channels=1)
+    class_model = GCN(in_channels=in_dim, out_channels=num_classes)
     return pretrain_model, class_model
 
 

@@ -2,7 +2,7 @@ import torch
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from experiments.experiment_utils import split_edges_for_link_prediction, sample_negative_edges
 from experiments.experiment_utils import EvaluationResult
-from models.baselines import SimpleGraphSAGE
+from models.graphsage import GraphSAGE
 from utils import get_device
 
 
@@ -40,8 +40,8 @@ def initialize_models(in_dim, num_classes, device):
     Creates two GraphSAGE models: one for regression pretraining,
     one for classification fine-tuning, and moves them to device.
     """
-    pre_model = SimpleGraphSAGE(in_channels=in_dim, out_channels=1).to(device)
-    class_model = SimpleGraphSAGE(in_channels=in_dim, out_channels=num_classes).to(device)
+    pre_model = GraphSAGE(in_channels=in_dim, out_channels=1).to(device)
+    class_model = GraphSAGE(in_channels=in_dim, out_channels=num_classes).to(device)
     return pre_model, class_model
 
 
