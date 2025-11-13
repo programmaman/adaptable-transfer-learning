@@ -34,7 +34,7 @@ from torch_geometric.transforms import SVDFeatureReduction
 
 
 # ----------------------------------------------------------------------
-# 🌱 Utilities
+# Utilities
 # ----------------------------------------------------------------------
 def set_global_seed(seed: int = 42):
     random.seed(seed)
@@ -56,7 +56,7 @@ def apply_feature_reduction(dataset, out_channels=100):
 
 
 # ----------------------------------------------------------------------
-# 🧠 Built-in datasets
+# Built-in datasets
 # ----------------------------------------------------------------------
 def load_pyg_dataset(name: str, root: str = "./datasets"):
     name = name.lower()
@@ -72,7 +72,7 @@ def load_pyg_dataset(name: str, root: str = "./datasets"):
 
 
 # ----------------------------------------------------------------------
-# 🧪 Synthetic dataset
+# Synthetic dataset
 # ----------------------------------------------------------------------
 def generate_synthetic_graph(num_nodes=1000, num_edges=1500, feature_dim=16, num_classes=5):
     x = torch.randn((num_nodes, feature_dim))
@@ -93,7 +93,7 @@ def generate_synthetic_graph(num_nodes=1000, num_edges=1500, feature_dim=16, num
 
 
 # ----------------------------------------------------------------------
-# 🎧 Deezer Europe
+# Deezer Europe
 # ----------------------------------------------------------------------
 def load_deezer_europe(edge_path, features_path, target_path):
     edges_df = pd.read_csv(edge_path)
@@ -122,7 +122,7 @@ def load_deezer_europe(edge_path, features_path, target_path):
 
 
 # ----------------------------------------------------------------------
-# 🕹️ Twitch Gamers
+# Twitch Gamers
 # ----------------------------------------------------------------------
 def load_twitch_gamers(edge_path, meta_path, use_metadata_as_features=True):
     meta_df = pd.read_csv(meta_path)
@@ -145,7 +145,7 @@ def load_twitch_gamers(edge_path, meta_path, use_metadata_as_features=True):
 
 
 # ----------------------------------------------------------------------
-# 🧑‍💻 MUSAE (Facebook & GitHub)
+# MUSAE (Facebook & GitHub)
 # ----------------------------------------------------------------------
 def _load_musae(edge_path, features_path, target_path, label_col):
     edges_df = pd.read_csv(edge_path)
@@ -192,7 +192,7 @@ def load_musae_github(edge, features, target):
 
 
 # ----------------------------------------------------------------------
-# 📧 Email-EU Core
+# Email-EU Core
 # ----------------------------------------------------------------------
 def load_email_eu_core(edge_path, label_path):
     edge_df = pd.read_csv(edge_path, sep=" ", header=None, names=["src", "dst"])
@@ -207,7 +207,7 @@ def load_email_eu_core(edge_path, label_path):
 
 
 # ----------------------------------------------------------------------
-# 🧩 Dataset Dispatcher
+# Dataset Dispatcher
 # ----------------------------------------------------------------------
 def load_dataset(name: str, root: str = "./datasets", **kwargs):
     """

@@ -6,21 +6,18 @@ import torch
 import pandas as pd
 from utils import get_device
 from yaml import SafeLoader
-from torch_geometric.utils import add_remaining_self_loops
-from torch_geometric.transforms import SVDFeatureReduction
 
 # Import dataset loaders
 from experiments.experiment_utils import (
     generate_synthetic_graph,
     load_musae_facebook_dataset,
     load_email_eu_core_dataset,
-    load_twitch_gamers_dataset,
     load_deezer_europe_dataset,
     load_musae_github_dataset,
 )
 
 # Import model and utils
-from models.graphlora import transfer, GNN, act, get_parameter, GNNLoRA
+from models.graphlora.graphlora import transfer, GNN, act, get_parameter
 
 
 def create_masks(num_nodes: int, train_ratio: float = 0.6, val_ratio: float = 0.8, device=None):
