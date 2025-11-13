@@ -32,6 +32,17 @@ class SMMDLoss(nn.Module):
         YX = kernels[batch:, :batch].mean()
         return XX + YY - XY - YX
 
+def batched_smmd_loss(z1, z2_loader, MMD, ppr_weight, batch_size):
+    device = z1.device
+    num_nodes = z1.size(0)
+    indices = torch.arange(num_nodes, device=device)
+    losses = []
+    for i in range(0, num_nodes, batch_size):
+        idx = indices[i:i + batch_size]
+        ppr = ppr_weight[idx][:, idx]
+        target = next(iter(z2_loader))
+        losses.append(MMD(z1[idx], target, ppr))
+    return torch.stack(losses).mean()
 
 def batched_contrastive_loss(z1, z2, labels, tau=0.5, batch_size=1000):
     """Memory-safe label-based contrastive loss."""
