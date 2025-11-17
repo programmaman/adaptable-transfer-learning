@@ -1,7 +1,6 @@
 # encoders/node2vec_encoder.py
 import torch
-import torch.nn as nn
-import torch_geometric.nn as pyg_nz
+import torch_geometric.nn as pyg_nn
 
 from encoders.structural_encoder import StructuralEncoder
 
