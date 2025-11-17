@@ -13,15 +13,17 @@ class StructuralIntegrator(nn.Module):
     gating, edge-aware modulation, attention biasing, etc.
     """
 
-    def integrate(self, x, struct, edge_index, node_indices=None):
+    def integrate(self, nodes, structural_encodings, edge_index, node_indices=None):
         """
         Main hook for modifying GNN state using structure.
 
         Args:
-            x            : [N, D] tensor of node features
-            struct       : [N, S] tensor of structural encodings
-            edge_index   : [2, E] edge list
-            node_indices : Optional subset of nodes to apply to
+            nodes            : [N, D] tensor of node features
+            structural_encodings     : [N, S] tensor of structural encodings
+            edge_index               : [2, E] edge list
+            node_indices             : LongTensor, shape [M], optional
+            Subset of node IDs to which the integration should be applied.
+            If None, the integrator should operate on all N nodes.
 
         Returns:
             Tuple of:
@@ -29,6 +31,7 @@ class StructuralIntegrator(nn.Module):
                 - edge_weights (optional): [E] edge modulation weights
         """
         raise NotImplementedError
+
 
 
 class GatingIntegrator(StructuralIntegrator):
@@ -40,32 +43,36 @@ class GatingIntegrator(StructuralIntegrator):
             nn.Sigmoid()
         )
 
-    def integrate(self, x, struct, edge_index, node_indices=None):
+    def integrate(self, nodes, structural_encodings, edge_index, node_indices=None):
         if node_indices is None:
-            node_indices = torch.arange(x.size(0), device=x.device)
+            node_indices = torch.arange(nodes.size(0), device=nodes.device)
 
-        combined = torch.cat([x[node_indices], struct[node_indices]], dim=-1)
+        combined = torch.cat([nodes[node_indices], structural_encodings[node_indices]], dim=-1)
         gate = self.gate(combined)
         fused = self.fusion_proj(combined)
 
         raw_proj = self.fusion_proj(torch.cat([
-            x[node_indices],
-            torch.zeros_like(struct[node_indices])
+            nodes[node_indices],
+            torch.zeros_like(structural_encodings[node_indices])
         ], dim=-1))
 
-        x_mod = torch.clone(x)
+        x_mod = torch.clone(nodes)
         x_mod[node_indices] = gate * fused + (1 - gate) * raw_proj
 
         return x_mod, None
 
 
+
+
 class Node2VecEdgeIntegrator(StructuralIntegrator):
-    def integrate(self, x, struct, edge_index, node_indices=None):
+    def integrate(self, nodes, structural_encodings, edge_index, node_indices=None):
         src, dst = edge_index
-        sim = function.cosine_similarity(struct[src], struct[dst], dim=-1)
-        return x, sim
+        sim = function.cosine_similarity(structural_encodings[src], structural_encodings[dst], dim=-1)
+        return nodes, sim
+
+
 
 
 class GeometryAwareIntegrator(StructuralIntegrator):
-    def integrate(self, x, shape_descriptors, edge_index, node_indices=None):
+    def integrate(self, nodes, shape_descriptors, edge_index, node_indices=None):
         raise NotImplementedError
