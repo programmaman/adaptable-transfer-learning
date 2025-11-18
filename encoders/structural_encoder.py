@@ -1,26 +1,42 @@
 # encoders/base.py
-import torch.nn as nn
 
-class StructuralEncoder(nn.Module):
+import torch.nn as neural_network
+
+
+class StructuralInformationEncoder(neural_network.Module):
     """
     Abstract interface for any structural or geometrical encoder.
 
-    Implementations produce fixed-size embeddings for given node indices,
-    derived from either:
-        - random-walk structure (Node2Vec),
-        - geometric descriptors (from Java),
-        - spectral embeddings, etc.
+    Implementations produce fixed-size embedding vectors for the
+    provided node index values. These embeddings may be derived from:
+
+        - random-walk structural information (for example, Node To Vector),
+        - geometric descriptors,
+        - spectral embedding methods,
+        - or other structural information sources.
     """
 
-    def forward(self, node_indices):
+    def forward(self, node_index_tensor):
         """
-        node_indices: LongTensor of node IDs.
+        Arguments:
+            node_index_tensor:
+                LongTensor containing the integer node identifiers.
+
         Returns:
-            Tensor [num_nodes, embedding_dim] representing node embeddings.
+            Tensor of shape [NumberOfNodes, EmbeddingDimension]
+            representing structural embedding vectors for each node.
         """
-        raise NotImplementedError("Subclasses must implement forward()")
+        raise NotImplementedError(
+            "Subclasses must implement the forward method."
+        )
 
     @property
-    def embedding_dim(self):
-        """Return the dimensionality of produced embeddings."""
-        raise NotImplementedError("Subclasses must define embedding_dim")
+    def embedding_dimension(self):
+        """
+        Returns:
+            Integer representing the dimensionality of the structural
+            embedding vectors produced by this encoder.
+        """
+        raise NotImplementedError(
+            "Subclasses must define the embedding_dimension property."
+        )

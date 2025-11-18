@@ -2,10 +2,10 @@
 import torch
 import torch_geometric.nn as pyg_nn
 
-from encoders.structural_encoder import StructuralEncoder
+from encoders.structural_encoder import StructuralInformationEncoder
 
 
-class Node2VecEncoder(StructuralEncoder):
+class Node2VecEncoder(StructuralInformationEncoder):
     """
     Node2Vec-based structural encoder.
     Wraps PyTorch Geometric's Node2Vec implementation.
@@ -33,14 +33,11 @@ class Node2VecEncoder(StructuralEncoder):
     def embedding_dim(self):
         return self._embedding_dim
 
-    def forward(self, node_indices):
+    def forward(self, node_indices=None):
         """
         Compute Node2Vec embeddings for given node indices.
         If node_indices is None, return all embeddings.
         """
-        if node_indices is None:
-            node_indices = torch.arange(self.node2vec.num_nodes,
-                                        device=self.node2vec.embedding.weight.device)
         return self.node2vec(node_indices)
 
     def train_encoder(self, epochs=1, batch_size=128, lr=0.01, verbose=True):

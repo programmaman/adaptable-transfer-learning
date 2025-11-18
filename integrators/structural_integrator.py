@@ -1,78 +1,157 @@
 import torch
 from torch import nn
-import torch.nn.functional as function
 
 
-
-class StructuralIntegrator(nn.Module):
+class StructuralSignalIntegrator(nn.Module):
     """
-    Abstract interface for integrating structural information
-    (e.g., Node2Vec, geometric descriptors) into a GNN model.
-
-    The integrator defines *how* structure is used — whether via
-    gating, edge-aware modulation, attention biasing, etc.
+    Abstract interface that defines how structural signals
+    (e.g., node2vec embeddings, positional encodings, geometry descriptors)
+    are incorporated into a GNN pipeline.
     """
 
-    def integrate(self, nodes, structural_encodings, edge_index, node_indices=None):
+    def integrate(self, node_features, structural_encodings,
+                  edge_indices, node_indices=None):
         """
-        Main hook for modifying GNN state using structure.
-
-        Args:
-            nodes            : [N, D] tensor of node features
-            structural_encodings     : [N, S] tensor of structural encodings
-            edge_index               : [2, E] edge list
-            node_indices             : LongTensor, shape [M], optional
-            Subset of node IDs to which the integration should be applied.
-            If None, the integrator should operate on all N nodes.
-
-        Returns:
-            Tuple of:
-                - x_mod: [N, D'] updated node embeddings
-                - edge_weights (optional): [E] edge modulation weights
+        Main hook for altering node features using structural signals.
         """
         raise NotImplementedError
 
 
 
-class GatingIntegrator(StructuralIntegrator):
-    def __init__(self, feat_dim, struct_dim, hidden_dim):
+# ============================================================
+# 1. Gated Fusion Integrator (Simple Feature/Structure Gate)
+# ============================================================
+
+class GatedStructureFeatureIntegrator(StructuralSignalIntegrator):
+    """
+    Applies a gating mechanism to fuse standard node features
+    with structural encodings into a hidden embedding.
+    """
+
+    def __init__(self, feature_dim, structural_dim, hidden_dim):
         super().__init__()
-        self.fusion_proj = nn.Linear(feat_dim + struct_dim, hidden_dim)
-        self.gate = nn.Sequential(
-            nn.Linear(feat_dim + struct_dim, hidden_dim),
+
+        self.feature_projection = nn.Linear(feature_dim, hidden_dim)
+        self.structural_projection = nn.Linear(structural_dim, hidden_dim)
+
+        # Gate decides weighting between (projected features) and (projected structure)
+        self.fusion_gate = nn.Sequential(
+            nn.Linear(feature_dim + structural_dim, hidden_dim),
             nn.Sigmoid()
         )
 
-    def integrate(self, nodes, structural_encodings, edge_index, node_indices=None):
+    def integrate(self, node_features, structural_encodings, edge_indices, node_indices=None):
+
         if node_indices is None:
-            node_indices = torch.arange(nodes.size(0), device=nodes.device)
+            node_indices = torch.arange(
+                node_features.size(0),
+                device=node_features.device
+            )
 
-        combined = torch.cat([nodes[node_indices], structural_encodings[node_indices]], dim=-1)
-        gate = self.gate(combined)
-        fused = self.fusion_proj(combined)
+        # Subsets
+        features_subset = node_features[node_indices]
+        structure_subset = structural_encodings[node_indices]
 
-        raw_proj = self.fusion_proj(torch.cat([
-            nodes[node_indices],
-            torch.zeros_like(structural_encodings[node_indices])
-        ], dim=-1))
+        combined_input = torch.cat([features_subset, structure_subset], dim=-1)
 
-        x_mod = torch.clone(nodes)
-        x_mod[node_indices] = gate * fused + (1 - gate) * raw_proj
+        gate_values = self.fusion_gate(combined_input)
 
-        return x_mod, None
+        projected_features = self.feature_projection(features_subset)
+        projected_structure = self.structural_projection(structure_subset)
 
+        fused_representation = (
+            gate_values * projected_structure
+            + (1 - gate_values) * projected_features
+        )
 
+        updated_node_features = node_features.clone()
+        updated_node_features[node_indices] = fused_representation
 
-
-class Node2VecEdgeIntegrator(StructuralIntegrator):
-    def integrate(self, nodes, structural_encodings, edge_index, node_indices=None):
-        src, dst = edge_index
-        sim = function.cosine_similarity(structural_encodings[src], structural_encodings[dst], dim=-1)
-        return nodes, sim
+        return updated_node_features, None
 
 
 
+# ============================================================
+# 2. Self-Supervised Gating Integrator
+# ============================================================
 
-class GeometryAwareIntegrator(StructuralIntegrator):
-    def integrate(self, nodes, shape_descriptors, edge_index, node_indices=None):
-        raise NotImplementedError
+class SelfSupervisedStructureFeatureIntegrator(StructuralSignalIntegrator):
+    """
+    Computes latent predictions from structure and features, then
+    uses their prediction error as a self-supervised gating signal.
+    """
+
+    def __init__(self, feature_dim, structural_dim, hidden_dim):
+        super().__init__()
+
+        self.hidden_dim = hidden_dim
+
+        self.feature_projection = nn.Linear(feature_dim, hidden_dim)
+        self.structural_projection = nn.Linear(structural_dim, hidden_dim)
+
+        # Heads predicting neighborhood-based targets
+        self.structural_prediction_head = nn.Linear(hidden_dim, hidden_dim)
+        self.feature_prediction_head = nn.Linear(hidden_dim, hidden_dim)
+
+    def integrate(self, node_features, structural_encodings, edge_indices, node_indices=None):
+
+        if node_indices is None:
+            node_indices = torch.arange(
+                node_features.size(0),
+                device=node_features.device
+            )
+
+        # Subsets
+        features_subset = node_features[node_indices]
+        structure_subset = structural_encodings[node_indices]
+
+        # Latent encodings
+        feature_latent = self.feature_projection(features_subset)
+        structural_latent = self.structural_projection(structure_subset)
+
+        # Build adjacency
+        src, dst = edge_indices
+        num_nodes = node_features.size(0)
+        device = node_features.device
+
+        adjacency = torch.zeros(num_nodes, num_nodes, device=device)
+        adjacency[src, dst] = 1
+
+        degree = adjacency.sum(dim=1, keepdim=True) + 1e-6
+        normalized_adj = adjacency / degree
+
+        # Neighborhood feature target (stop-gradient)
+        with torch.no_grad():
+            neighbor_feature_targets = normalized_adj @ node_features
+            neighbor_feature_targets = neighbor_feature_targets[node_indices]
+
+        # Predict targets from structure and from features
+        predicted_from_structure = self.structural_prediction_head(structural_latent)
+        predicted_from_features = self.feature_prediction_head(feature_latent)
+
+        # Target projection into hidden space
+        target_latent = self.feature_projection(neighbor_feature_targets)
+
+        # MSE losses → gating signal
+        structural_loss = (predicted_from_structure - target_latent).pow(2).mean(dim=1)
+        feature_loss = (predicted_from_features - target_latent).pow(2).mean(dim=1)
+
+        loss_based_gating_logits = torch.stack(
+            [-structural_loss, -feature_loss],
+            dim=-1
+        )
+
+        gating_weights = torch.softmax(loss_based_gating_logits, dim=-1)
+
+        structural_gate = gating_weights[:, 0].unsqueeze(1)
+        feature_gate = gating_weights[:, 1].unsqueeze(1)
+
+        fused_representation = (
+            structural_gate * structural_latent
+            + feature_gate * feature_latent
+        )
+
+        updated_node_features = node_features.clone()
+        updated_node_features[node_indices] = fused_representation
+
+        return updated_node_features, None
