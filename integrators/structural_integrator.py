@@ -125,10 +125,15 @@ class SimpleFeatureGate(Gate):
             nn.Sigmoid()
         )
 
+        # 3. Conditional output projection
+        if hidden_dimension != feature_dimension:
+            self.output_projection = nn.Linear(hidden_dimension, feature_dimension)
+        else:
+            self.output_projection = nn.Identity()
+
     @staticmethod
     def _create_fusion_module(fusion_type: FusionType, feature_dim: int, structural_dim: int,
                               hidden_dim: int) -> EmbeddingFusion:
-        """Factory method to get the correct fusion implementation."""
         if fusion_type == FusionType.CONCAT:
             return ConcatFusion(feature_dim, structural_dim, hidden_dim)
         elif fusion_type in [FusionType.ADD, FusionType.MUL, FusionType.SUB]:
@@ -147,25 +152,26 @@ class SimpleFeatureGate(Gate):
         feature_subset = node_features[node_indices]
         structure_subset = structural_encodings[node_indices]
 
-        # Use the configured fusion module
         combined_input = self.fusion_module(feature_subset, structure_subset)
 
-        # Gate calculation remains the same
         gate_values = self.fusion_gate(combined_input)
 
         projected_features = self.feature_projection(feature_subset)
         projected_structure = self.structural_projection(structure_subset)
 
-        # Final gated combination remains the same
         fused_representation = (
-                gate_values * projected_structure
-                + (1 - gate_values) * projected_features
+            gate_values * projected_structure
+            + (1 - gate_values) * projected_features
         )
+
+        # Apply conditional projection here
+        fused_representation = self.output_projection(fused_representation)
 
         updated_node_features = node_features.clone()
         updated_node_features[node_indices] = fused_representation
 
         return updated_node_features, None
+
 
 
 class SelfSupervisedGate(Gate):
