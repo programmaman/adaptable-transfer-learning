@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 
 # Load Excel
 file_path = "../results/experiment_results.xlsx"

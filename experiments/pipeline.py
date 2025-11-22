@@ -23,7 +23,14 @@ logger = logging.getLogger(__name__)
 
 
 def _initialize_device(device):
-    return device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if device is None:
+        chosen = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    else:
+        chosen = device if isinstance(device, torch.device) else torch.device(device)
+    logger.info(f"Selected device: {chosen}")
+    if torch.cuda.is_available() and getattr(chosen, "type", None) != "cuda":
+        logger.warning("CUDA is available but the selected device is not 'cuda'. This may lead to suboptimal performance.")
+    return chosen
 
 
 def _initialize_seed(seed):
