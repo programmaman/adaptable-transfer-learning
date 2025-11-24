@@ -12,6 +12,7 @@ def set_global_seed(seed):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
+
 def generate_synthetic_graph(num_nodes=10000, num_edges=15000, feature_dim=16):
     # Generate random node features
     x = torch.randn((num_nodes, feature_dim))
@@ -49,6 +50,7 @@ def generate_task_labels(data, num_classes=5):
     kmeans = KMeans(n_clusters=num_classes, random_state=42).fit(x_np)
     labels = torch.tensor(kmeans.labels_, dtype=torch.long)
     return labels
+
 
 def load_twitch_dataset(prefix, label_col="mature"):
     """
@@ -134,6 +136,7 @@ def load_twitch_dataset(prefix, label_col="mature"):
     print(f"  → Label column: {label_col} | Classes: {list(label_encoder.classes_)}")
 
     return data, labels, label_encoder
+
 
 def load_deezer_europe_dataset(edge_path, features_path, target_path):
     # --- Load edges ---
@@ -374,10 +377,9 @@ def sample_negative_edges(pos_edges: torch.Tensor, num_nodes: int, num_samples: 
     if num_samples is None:
         num_samples = pos_edges.size(0)
 
-    # Initialize set of positive or existing edges
-    if existing_edge_set is None:
-        existing_edge_set = set((u.item(), v.item()) for u, v in pos_edges)
-
+        # Initialize set of positive or existing edges
+        if existing_edge_set is None:
+            existing_edge_set = {(u.item(), v.item()) for u, v in pos_edges}
     neg_edges = set()
     while len(neg_edges) < num_samples:
         u = torch.randint(0, num_nodes, (1,)).item()
@@ -407,10 +409,6 @@ def split_edges_for_link_prediction(edge_index: torch.Tensor, removal_ratio: flo
     # Match expected format: {0: [Tensor of shape [num_removed, 2]]}
     rem_edge_list = {0: [removed_edges.t()]}  # [num_edges, 2]
     return remaining_edges, rem_edge_list
-
-
-from dataclasses import dataclass
-from typing import Optional, Any
 
 
 from dataclasses import dataclass, field
@@ -451,4 +449,3 @@ class EvaluationResult:
             "ap": self.ap,
             **self.metadata
         }
-
