@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
 
+import torch
+#TODO: Refactor pipeline to now execute tasks
 
 class Task(ABC):
     """A self-contained unit of computation inside a pipeline."""
