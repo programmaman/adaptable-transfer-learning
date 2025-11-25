@@ -7,7 +7,7 @@ from sklearn.metrics import (
 )
 
 from experiments.experiment_utils import EvaluationResult
-from task import Task
+from tasks.task import Task
 
 
 class NodeClassificationTask(Task, ABC):

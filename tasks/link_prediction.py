@@ -10,7 +10,7 @@ from experiments.experiment_utils import (
     split_edges_for_link_prediction,
     sample_negative_edges
 )
-from task import Task
+from tasks.task import Task
 
 
 class LinkPredictionTask(Task, ABC):

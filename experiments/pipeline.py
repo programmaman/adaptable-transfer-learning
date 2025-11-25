@@ -1,10 +1,19 @@
+import copy
 import logging
 import os
-import torch.nn.functional as functional
-from sklearn.decomposition import TruncatedSVD
-from torch import nn
+import random
+import time
+from abc import ABC
+from typing import Iterable
 
-from experiments.experiment_utils import split_edges_for_link_prediction
+import numpy as np
+import torch
+from sklearn.decomposition import TruncatedSVD
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, \
+    average_precision_score
+from torch import nn, functional
+
+from experiments.experiment_utils import EvaluationResult, sample_negative_edges, split_edges_for_link_prediction
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,16 +42,166 @@ def _initialize_seed(seed):
     return generated_seed
 
 
-import copy
-import time
-from abc import ABC
-import numpy as np
-import random
+class TaskPipeline(ABC):
+    """
+    A task-driven pipeline for GNN models.
+
+    Core lifecycle:
+        - prepare_data()
+        - pretrain()
+        - for each Task:
+            - task.prepare()
+            - task.train()
+            - task.evaluate()
+    """
+
+    def __init__(self, seed=None, device=None):
+        self.seed = self._initialize_seed(seed)
+        self.device = self._initialize_device(device)
+        self.metadata = {"seed": self.seed}
+
+        self._validate_device()
+        logger.info(f"Pipeline initialized | seed={self.seed} | device={self.device}")
+
+    # ----------------------------------------------------------------------
+    # MAIN ENTRYPOINT
+    # ----------------------------------------------------------------------
+    def run(
+        self,
+        model: torch.nn.Module,
+        data,
+        tasks: Iterable,
+        pretrain_data=None,
+        pretrain_epochs=0,
+        pretrained_snapshot_path="pretrained_snapshot.pt"
+    ):
+        """
+        Orchestrates the full lifecycle of tasks in a modular way.
+        """
+
+        if model is None:
+            raise ValueError("Pipeline.run(): you must provide a model.")
+        if not tasks:
+            raise ValueError("Pipeline.run(): no tasks provided.")
+
+        self._set_seed()
+
+        start_total = time.time()
+
+        # ------------------------------------------------------------------
+        # Prepare Target Data
+        # ------------------------------------------------------------------
+        data = self.prepare_data(data).to(self.device)
+
+        # Determine pretraining dataset
+        if pretrain_data is None:
+            pretrain_data = data
+        else:
+            logger.info("Transfer Learning: Using separate pretrain dataset.")
+            pretrain_data = self.prepare_data(pretrain_data).to(self.device)
+
+        # ------------------------------------------------------------------
+        # PRETRAINING
+        # ------------------------------------------------------------------
+        if pretrain_epochs > 0:
+            logger.info(f"Pretraining for {pretrain_epochs} epochs...")
+            model = self.pretrain(model, pretrain_data, pretrain_epochs)
+
+        logger.info(f"Saving pretrained snapshot → {pretrained_snapshot_path}")
+        torch.save(model.state_dict(), pretrained_snapshot_path)
+
+        # ------------------------------------------------------------------
+        # PER-TASK EXECUTION
+        # ------------------------------------------------------------------
+        results = {}
+
+        for task in tasks:
+            logger.info(f"\n===== Running Task: {task.name} =====")
+
+            # Clone model so each task starts from identical state
+            model_copy = copy.deepcopy(model)
+            model_copy.load_state_dict(
+                torch.load(pretrained_snapshot_path, map_location=self.device)
+            )
+
+            # Prepare task-specific version of the data
+            task_data = task.prepare(data)
+
+            # Move to device
+            task_data = task_data.to(self.device)
+
+            # Train task head
+            model_copy = task.train(model_copy, task_data)
+
+            # Evaluate
+            result = task.evaluate(model_copy, task_data)
+
+            # Merge inherited metadata
+            result.metadata.update(self.metadata)
+            result.metadata.update(task.metadata)
+
+            results[task.name] = result
+
+        self.metadata["total_time"] = time.time() - start_total
+
+        return model, results
+
+    # ----------------------------------------------------------------------
+    # ABSTRACT HOOKS (Overridable)
+    # ----------------------------------------------------------------------
+
+    def prepare_data(self, data):
+        """Override for data preparation such as masks."""
+        return data
+
+    def pretrain(self, model, data, epochs):
+        """Default: no pretraining."""
+        logger.info("No pretraining implemented, skipping.")
+        return model
+
+    # ----------------------------------------------------------------------
+    # INTERNAL HELPERS
+    # ----------------------------------------------------------------------
+
+    @staticmethod
+    def _initialize_seed(seed):
+        if seed is not None:
+            return seed
+        generated = int(time.time() * 1e6) % (2**32)
+        logger.warning(f"No seed provided — using generated seed {generated}")
+        return generated
+
+    @staticmethod
+    def _initialize_device(device):
+        if device is None:
+            chosen = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        else:
+            chosen = device if isinstance(device, torch.device) else torch.device(device)
+
+        logger.info(f"Selected device: {chosen}")
+        return chosen
+
+    def _validate_device(self):
+        if torch.cuda.is_available() and self.device.type != "cuda":
+            logger.warning("CUDA available but pipeline device is CPU — expect slower training.")
+
+    def _set_seed(self):
+        torch.manual_seed(self.seed)
+        np.random.seed(self.seed)
+        random.seed(self.seed)
+
 
 class Pipeline(ABC):
+    """
+    Original pipeline implementation:
+    - Pretraining (optional)
+    - Optional node classification head
+    - Optional link prediction head
+    """
+
     def __init__(self, seed=None, device=None, train_ratio=0.6, val_ratio=0.2):
-        self.seed = _initialize_seed(seed)  # Assumes external helper exists
-        self.device = _initialize_device(device)  # Assumes external helper exists
+        self.seed = _initialize_seed(seed)
+        self.device = _initialize_device(device)
         self.train_ratio = train_ratio
         self.val_ratio = val_ratio
         self.metadata = {"seed": self.seed}
@@ -50,132 +209,150 @@ class Pipeline(ABC):
         self._validate_device()
         logger.info(f"Pipeline initialized with seed {self.seed} on device {self.device}")
 
-    def run(self,
-            model,
-            data,
-            labels=None,
-            pretrain_data=None,
-            pretrain_epochs=100,
-            class_epochs=30,
-            lp_epochs=30,
-            tasks=None,
-            pretrained_path="pretrained_snapshot.pt"):
+    # ----------------------------------------------------------------------
+    # MAIN EXECUTION FLOW
+    # ----------------------------------------------------------------------
+    def run(
+        self,
+        model,
+        data,
+        labels=None,
+        pretrain_data=None,
+        pretrain_epochs=100,
+        class_epochs=30,
+        lp_epochs=30,
+        tasks=None,
+        pretrained_path="pretrained_snapshot.pt",
+    ):
         """
-        Unified execution entry point, modified to save the pretrained model
-        snapshot to disk rather than storing it in memory.
+        Unified execution entry point.
+        Performs:
+            1. Data prep
+            2. Pretraining
+            3. Classification (optional)
+            4. Link prediction (optional)
         """
 
         if tasks is None:
-            tasks = ['classification', 'link_prediction']
+            tasks = ["classification", "link_prediction"]
+
         if model is None:
             raise ValueError("You must pass a model instance to run().")
 
         self._set_seed()
         start_total = time.time()
 
-        # 1. Prepare Target Data
+        # ------------------------------------------------------------------
+        # 1. Prepare target dataset
+        # ------------------------------------------------------------------
         target_data = self.prepare_data(data).to(self.device)
 
-        # Determine which data to use for pretraining
+        # Determine pretraining dataset
         pretrain_data = pretrain_data if pretrain_data is not None else target_data
+
         if pretrain_data is not None:
             pretrain_data = self.prepare_data(pretrain_data).to(self.device)
             logger.info("Transfer Learning mode: Pretraining on separate source data.")
 
+        # ------------------------------------------------------------------
         # 2. Pretraining
+        # ------------------------------------------------------------------
         logger.info(f"Starting Pretraining ({pretrain_epochs} epochs)...")
         model = self.pretrain(model, pretrain_data, pretrain_epochs)
 
-        # Save pretrained snapshot to disk
         logger.info(f"Saving pretrained model snapshot to: {pretrained_path}")
         torch.save(model.state_dict(), pretrained_path)
 
         results = {}
 
-        # 3. Node Classification (Optional)
-        if 'classification' in tasks:
+        # ------------------------------------------------------------------
+        # 3. Node Classification
+        # ------------------------------------------------------------------
+        if "classification" in tasks:
             if labels is None:
                 logger.warning("Skipping Classification: No labels provided.")
             else:
                 logger.info("Starting Classification Phase...")
-                # Restore clean pretrained state from disk
+
                 model_copy = copy.deepcopy(model)
-                model_copy.load_state_dict(torch.load(pretrained_path, map_location=self.device))
-                results['classification'] = self._run_classification(
+                model_copy.load_state_dict(
+                    torch.load(pretrained_path, map_location=self.device)
+                )
+
+                results["classification"] = self._run_classification(
                     model_copy, target_data, labels, class_epochs
                 )
 
-        # 4. Link Prediction (Optional)
-        if 'link_prediction' in tasks:
+        # ------------------------------------------------------------------
+        # 4. Link Prediction
+        # ------------------------------------------------------------------
+        if "link_prediction" in tasks:
             logger.info("Starting Link Prediction Phase...")
-            # Restore clean pretrained state from disk
+
             model_copy = copy.deepcopy(model)
-            model_copy.load_state_dict(torch.load(pretrained_path, map_location=self.device))
-            results['link_prediction'] = self._run_link_prediction(
+            model_copy.load_state_dict(
+                torch.load(pretrained_path, map_location=self.device)
+            )
+
+            results["link_prediction"] = self._run_link_prediction(
                 model_copy, target_data, lp_epochs
             )
 
-        # Metadata handling
+        # ------------------------------------------------------------------
+        # Final metadata
+        # ------------------------------------------------------------------
         self.metadata["total_time"] = time.time() - start_total
+
         for key, res in results.items():
             res.metadata.update(self.metadata)
 
-        # Return model (still pretrained) and results
         return model, results
 
-    # ---- Modularized Task Runners ----
-
+    # ----------------------------------------------------------------------
+    # TASK RUNNERS
+    # ----------------------------------------------------------------------
     def _run_classification(self, model, data, labels, epochs):
         start = time.time()
         model = self.train_classification(model, data, labels, epochs)
         duration = time.time() - start
-
         self.metadata["classifier_time"] = duration
         return self.evaluate_classification(model, data, labels)
 
     def _run_link_prediction(self, model, data, epochs):
         lp_data = data.clone()
-
-        # Perform split (assumes external helper function)
         lp_data.edge_index, rem_edge_list = split_edges_for_link_prediction(lp_data.edge_index)
 
         start = time.time()
         model = self.train_link_prediction(model, lp_data, rem_edge_list, epochs)
         duration = time.time() - start
-
         self.metadata["link_pred_time"] = duration
         return self.evaluate_link_prediction(model, lp_data, rem_edge_list)
 
-    # ---- Helper Methods ----
-
-    def _validate_device(self):
-        if torch.cuda.is_available() and getattr(self.device, 'type', '') != 'cuda':
-            logger.warning("CUDA available but not used. Performance may suffer.")
-
-    def _set_seed(self):
-        torch.manual_seed(self.seed)
-        np.random.seed(self.seed)
-        random.seed(self.seed)
-
+    # ----------------------------------------------------------------------
+    # DATA & UTILITY METHODS
+    # ----------------------------------------------------------------------
     def prepare_data(self, data):
-        """Generates masks. Assumes data has num_nodes attribute."""
+        """
+        Generates masks for classification.
+        Assumes data has num_nodes.
+        """
         num_nodes = data.num_nodes
         logger.info(f"Preparing data splits for graph with {num_nodes} nodes.")
 
-        # Use a local generator or the global seeded state
         perm = torch.randperm(num_nodes)
 
         train_cut = int(self.train_ratio * num_nodes)
         val_cut = int((self.train_ratio + self.val_ratio) * num_nodes)
 
-        # Calculate explicit counts for logging
         n_train = train_cut
         n_val = val_cut - train_cut
         n_test = num_nodes - val_cut
 
-        logger.info(f"Split sizes | Train: {n_train} ({self.train_ratio:.0%}) | "
-                    f"Val: {n_val} ({self.val_ratio:.0%}) | "
-                    f"Test: {n_test}")
+        logger.info(
+            f"Split sizes | Train: {n_train} ({self.train_ratio:.0%}) | "
+            f"Val: {n_val} ({self.val_ratio:.0%}) | "
+            f"Test: {n_test}"
+        )
 
         data.train_mask = torch.zeros(num_nodes, dtype=torch.bool)
         data.val_mask = torch.zeros(num_nodes, dtype=torch.bool)
@@ -186,8 +363,22 @@ class Pipeline(ABC):
         data.test_mask[perm[val_cut:]] = True
 
         return data
-    # ---- Abstract / Default Methods ----
 
+    # ----------------------------------------------------------------------
+    # DEVICE, SEED, ABSTRACT HOOKS
+    # ----------------------------------------------------------------------
+    def _validate_device(self):
+        if torch.cuda.is_available() and getattr(self.device, "type", "") != "cuda":
+            logger.warning("CUDA available but not used. Performance may suffer.")
+
+    def _set_seed(self):
+        torch.manual_seed(self.seed)
+        np.random.seed(self.seed)
+        random.seed(self.seed)
+
+    # ----------------------------------------------------------------------
+    # ABSTRACT METHODS
+    # ----------------------------------------------------------------------
     def pretrain(self, model, data, epochs):
         logger.info("Default: Skipping pretraining.")
         return model
@@ -205,14 +396,6 @@ class Pipeline(ABC):
     def evaluate_link_prediction(self, model, data, rem_edge_list):
         raise NotImplementedError("Subclass must implement evaluate_link_prediction")
 
-
-
-
-from experiments.experiment_utils import EvaluationResult, sample_negative_edges
-
-import torch
-from sklearn.metrics import (accuracy_score, precision_score, recall_score,
-                             f1_score, roc_auc_score, average_precision_score)
 
 
 class DefaultPipeline(Pipeline):
@@ -525,8 +708,6 @@ class StructGPipeline(Pipeline):
             preds = logits[mask].argmax(dim=1).cpu()
             true = labels[mask].cpu()
 
-        from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
-
         acc = accuracy_score(true, preds)
         precision = precision_score(true, preds, average="macro", zero_division=0)
         recall = recall_score(true, preds, average="macro", zero_division=0)
@@ -583,8 +764,6 @@ class StructGPipeline(Pipeline):
         labels = torch.cat([torch.ones_like(pos_scores), torch.zeros_like(neg_scores)]).cpu()
         preds = (torch.sigmoid(scores) > 0.5).float()
 
-        from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, \
-            average_precision_score
 
         acc = accuracy_score(labels, preds)
         precision = precision_score(labels, preds, zero_division=0)
