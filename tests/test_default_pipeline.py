@@ -59,7 +59,7 @@ class TestDefaultPipelineGCN(unittest.TestCase):
             pretrained_path = str(Path(tmpdir) / "pretrained_snapshot.pt")
 
             # run only classification and keep epochs small for CI speed
-            model_out, results = pipeline.run(
+            _, results = pipeline.run(
                 model=model,
                 data=data,
                 labels=labels,
@@ -86,6 +86,8 @@ class TestDefaultPipelineGCN(unittest.TestCase):
             acc = acc.item()
         self.assertGreaterEqual(acc, 0.0)
         self.assertLessEqual(acc, 1.0)
+
+        print("Evaluation Results:", results)
 
 
 
@@ -158,6 +160,8 @@ class TestTaskPipelineGCN(unittest.TestCase):
 
         self.assertGreaterEqual(acc, 0.0)
         self.assertLessEqual(acc, 1.0)
+
+        print("Evaluation Results:", results)
 
 
 if __name__ == "__main__":

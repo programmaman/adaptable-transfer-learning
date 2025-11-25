@@ -10,7 +10,7 @@ from experiments.experiment_utils import EvaluationResult
 from tasks.task import Task
 
 
-class NodeClassificationTask(Task, ABC):
+class NodeClassificationTask(Task):
     """
     Node classification task for models following the PyG signature: model(x, edge_index).
     """
