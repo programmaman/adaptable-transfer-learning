@@ -42,7 +42,7 @@ def _initialize_seed(seed):
     return generated_seed
 
 
-class TaskPipeline(ABC):
+class TaskPipeline:
     """
     A task-driven pipeline for GNN models.
 

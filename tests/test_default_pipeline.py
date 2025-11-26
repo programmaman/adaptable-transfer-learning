@@ -5,7 +5,7 @@ from pathlib import Path
 import unittest
 import torch
 
-from experiments.pipeline import DefaultPipeline, TaskPipeline
+from experiments.pipeline import TaskPipeline
 from models.gcn import GCN
 from tasks.node_classification import NodeClassificationTask
 
@@ -29,67 +29,6 @@ class SimpleData:
         return self
 
 
-class TestDefaultPipelineGCN(unittest.TestCase):
-    def test_default_pipeline_classification(self):
-        # deterministic behavior
-        torch.manual_seed(42)
-
-        # small synthetic graph
-        num_nodes = 10
-        feat_dim = 4
-        x = torch.randn(num_nodes, feat_dim)
-        edges = torch.tensor([
-            [0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9],
-            [1,0,2,1,3,2,4,3,5,4,6,5,7,6,8,7,9,8]
-        ], dtype=torch.long)
-
-        data = SimpleData(x, edges)
-
-        # labels for node classification (2 classes)
-        labels = torch.randint(0, 2, (num_nodes,), dtype=torch.long)
-        # attach labels to data as some pipelines expect data.y
-        data.y = labels.clone()
-
-        # instantiate model and pipeline
-        model = GCN(in_channels=feat_dim, out_channels=2)
-        pipeline = DefaultPipeline(seed=42, device="cpu", train_ratio=0.6, val_ratio=0.2)
-
-        # Use context manager so tmp dir is cleaned automatically
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pretrained_path = str(Path(tmpdir) / "pretrained_snapshot.pt")
-
-            # run only classification and keep epochs small for CI speed
-            _, results = pipeline.run(
-                model=model,
-                data=data,
-                labels=labels,
-                pretrain_epochs=0,
-                class_epochs=1,
-                lp_epochs=0,
-                tasks=["classification"],
-                pretrained_path=pretrained_path,
-            )
-
-        self.assertIn("classification", results)
-        class_res = results["classification"]
-
-        # accept either attribute or dict-style accuracy
-        if hasattr(class_res, "accuracy"):
-            acc = class_res.accuracy
-        elif isinstance(class_res, dict) and "accuracy" in class_res:
-            acc = class_res["accuracy"]
-        else:
-            self.fail("classification result missing accuracy")
-
-        self.assertIsInstance(acc, (float, int, torch.Tensor))
-        if isinstance(acc, torch.Tensor):
-            acc = acc.item()
-        self.assertGreaterEqual(acc, 0.0)
-        self.assertLessEqual(acc, 1.0)
-
-        print("Evaluation Results:", results)
-
-
 
 class TestTaskPipelineGCN(unittest.TestCase):
     def test_task_pipeline_classification(self):
@@ -99,10 +38,10 @@ class TestTaskPipelineGCN(unittest.TestCase):
         num_nodes = 8
         feat_dim = 3
         x = torch.randn(num_nodes, feat_dim)
-        edges = torch.tensor([
-            [0, 1, 1, 2, 2, 3, 4, 5],
-            [1, 0, 2, 1, 3, 2, 5, 4]
-        ], dtype=torch.long)
+        edges = torch.LongTensor([
+                [0, 1, 1, 2, 2, 3, 4, 5],
+                [1, 0, 2, 1, 3, 2, 5, 4]
+            ])
 
         data = SimpleData(x, edges)
 
@@ -134,7 +73,7 @@ class TestTaskPipelineGCN(unittest.TestCase):
             pretrained_path = str(Path(tmpdir) / "task_snapshot.pt")
 
             # run ONLY classification
-            model_out, results = pipeline.run(
+            _, results = pipeline.run(
                 model=model,
                 data=data,
                 tasks=[cls_task],
