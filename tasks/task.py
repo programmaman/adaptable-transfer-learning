@@ -12,10 +12,11 @@ from utils import logger
 class Task(ABC):
     """A self-contained unit of computation inside a pipeline."""
 
-    def __init__(self, name):
+    def __init__(self, name: str, epochs: int = 30):
         self.name = name
+        self.epochs = epochs  # default number of training epochs
         self.metadata = {}
-        logger.info(f"Task initialized: {self.name}")
+        logger.info(f"Task initialized: {self.name} | epochs={self.epochs}")
 
     @abstractmethod
     def prepare(self, data):
@@ -34,6 +35,7 @@ class Task(ABC):
         """Return evaluation results + updated metadata."""
         logger.info(f"[{self.name}] Starting evaluation...")
         ...
+
 
 
 class Pretrain:
@@ -63,28 +65,24 @@ class Pretrain:
 
 
 class GraphLoRAPretrain(Task):
-    """
-    GraphLoRA feature reconstruction as a Task for TaskPipeline.
-    """
-
-    def __init__(self, base_model_path: str, seed: int = 42, name: str = "graph_lora_pretrain"):
-        super().__init__(name)
+    def __init__(self, base_model_path: str, seed: int = 42, epochs: int = 10,
+                 name: str = "graph_lora_pretrain"):
+        super().__init__(name, epochs=epochs)
         self.base_model_path = base_model_path
         self.seed = seed
         self.metadata = {}
 
     def prepare(self, data: Any):
-        # No special preparation; could wrap preprocessing here if needed
         return data
 
-    def train(self, model: nn.Module, data: Any, epochs=10, lr=0.01, weight_decay=5e-4,
+    def train(self, model: nn.Module, data: Any, lr=0.01, weight_decay=5e-4,
               feat_reduce_dim=256, safety_factor=0.7) -> nn.Module:
         logger.info(f"[{self.name}] Starting GraphLoRA pretraining...")
 
         device = next(model.parameters()).device
         data = data.to(device)
 
-        # --- Step 1: Memory-aware feature reduction ---
+        # Memory-aware feature reduction
         n_nodes, n_features = data.x.size()
         required_bytes = n_nodes * n_features * 4 * 2
         use_reduction = False
@@ -102,7 +100,7 @@ class GraphLoRAPretrain(Task):
             if hasattr(model, "reset_with_input_dim"):
                 model.reset_with_input_dim(data.x.size(1))
 
-        # --- Step 2: Decoder ---
+        # Decoder + optimizer
         decoder = nn.Linear(model.gnn_frozen.conv[-1].out_channels, data.x.size(1)).to(device)
         optimizer = torch.optim.Adam(
             list(model.gnn_frozen.parameters()) + list(decoder.parameters()),
@@ -110,12 +108,11 @@ class GraphLoRAPretrain(Task):
             weight_decay=weight_decay
         )
 
-        # --- Step 3: Training loop ---
-        for epoch in range(epochs):
+        # Training loop uses self.epochs
+        for epoch in range(self.epochs):
             model.gnn_frozen.train()
             decoder.train()
             optimizer.zero_grad()
-
             emb = model.gnn_frozen(data.x, data.edge_index)
             recon = decoder(emb)
             loss = functional.mse_loss(recon, data.x)
@@ -125,7 +122,7 @@ class GraphLoRAPretrain(Task):
             if (epoch + 1) % 10 == 0:
                 logger.info(f"[{self.name}] Epoch {epoch+1}: Loss {loss.item():.4f}")
 
-        # --- Step 4: Save backbone ---
+        # Save pretrained weights
         os.makedirs(os.path.dirname(self.base_model_path), exist_ok=True)
         torch.save(model.gnn_frozen.state_dict(), self.base_model_path)
         logger.info(f"[{self.name}] Saved pretrained weights to {self.base_model_path}")
@@ -133,10 +130,10 @@ class GraphLoRAPretrain(Task):
         return model
 
     def evaluate(self, model: nn.Module, data: Any):
-        # Pretraining tasks typically do not produce evaluation metrics
         class Result:
             accuracy = None
             f1 = None
             metadata = {}
         return Result()
+
 

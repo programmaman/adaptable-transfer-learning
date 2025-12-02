@@ -1,4 +1,3 @@
-from abc import ABC
 import torch
 from torch import nn
 from sklearn.metrics import (
@@ -17,8 +16,7 @@ class NodeClassificationTask(Task):
 
     def __init__(self, name="classification", epochs=30, learning_rate=0.01,
                  weight_decay=5e-4, log_every=10):
-        super().__init__(name)
-        self.epochs = epochs
+        super().__init__(name, epochs=epochs)  # epochs handled by base class
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
         self.log_every = log_every
@@ -29,7 +27,6 @@ class NodeClassificationTask(Task):
     def prepare(self, data):
         """
         Validate that the input data is well-formed for node classification.
-
         Required fields:
             - data.x               (node features)
             - data.y               (node labels)
@@ -38,122 +35,50 @@ class NodeClassificationTask(Task):
             - data.val_mask        (boolean mask)
             - data.test_mask       (boolean mask)
         """
-
-        # -------------------------------------------------------------
         # 1. Verify required attributes exist
-        # -------------------------------------------------------------
-        required_attributes = [
-            "x", "y", "edge_index",
-            "train_mask", "val_mask", "test_mask"
-        ]
+        required_attributes = ["x", "y", "edge_index", "train_mask", "val_mask", "test_mask"]
+        for attr in required_attributes:
+            assert hasattr(data, attr), f"ClassificationTask.prepare: data is missing required attribute '{attr}'."
 
-        for attribute_name in required_attributes:
-            if not hasattr(data, attribute_name):
-                raise ValueError(
-                    f"ClassificationTask.prepare: Expected data to have attribute "
-                    f"'{attribute_name}', but it is missing."
-                )
-
-        # -------------------------------------------------------------
-        # 2. Verify shapes
-        # -------------------------------------------------------------
         number_of_nodes = data.x.size(0)
 
-        # Label count must match number of nodes
-        if data.y.size(0) != number_of_nodes:
-            raise ValueError(
-                f"ClassificationTask.prepare: data.y has shape {data.y.shape} but "
-                f"data.x has shape {data.x.shape}. Labels must have one entry per node."
+        # 2. Verify shapes
+        assert data.y.size(0) == number_of_nodes, (
+            f"ClassificationTask.prepare: data.y has shape {data.y.shape} but "
+            f"data.x has shape {data.x.shape}."
+        )
+        for mask_name in ("train_mask", "val_mask", "test_mask"):
+            mask = getattr(data, mask_name)
+            assert mask.size(0) == number_of_nodes, (
+                f"ClassificationTask.prepare: {mask_name} has shape {mask.shape} but expected shape ({number_of_nodes},)."
             )
 
-        # Masks must match the number of nodes
+        # 3. Masks must be boolean
         for mask_name in ("train_mask", "val_mask", "test_mask"):
             mask = getattr(data, mask_name)
-            if mask.size(0) != number_of_nodes:
-                raise ValueError(
-                    f"ClassificationTask.prepare: {mask_name} has shape {mask.shape} "
-                    f"but expected shape ({number_of_nodes},)."
-                )
+            assert mask.dtype == torch.bool, f"ClassificationTask.prepare: {mask_name} must be boolean, got {mask.dtype}."
 
-        # -------------------------------------------------------------
-        # 3. Masks must be boolean tensors
-        # -------------------------------------------------------------
-        for mask_name in ("train_mask", "val_mask", "test_mask"):
-            mask = getattr(data, mask_name)
-            if mask.dtype != torch.bool:
-                raise TypeError(
-                    f"ClassificationTask.prepare: {mask_name} must be a boolean tensor "
-                    f"(dtype=torch.bool), but got {mask.dtype}."
-                )
-
-        # -------------------------------------------------------------
         # 4. Masks must not overlap
-        # -------------------------------------------------------------
-        mask_overlap = (
-                data.train_mask & data.val_mask |
-                data.train_mask & data.test_mask |
-                data.val_mask & data.test_mask
-        )
-        if mask_overlap.any():
-            raise ValueError(
-                "ClassificationTask.prepare: train_mask, val_mask, and test_mask "
-                "must not overlap, but some nodes appear in multiple splits."
-            )
+        mask_overlap = (data.train_mask & data.val_mask) | (data.train_mask & data.test_mask) | (
+                    data.val_mask & data.test_mask)
+        assert not mask_overlap.any(), "ClassificationTask.prepare: train_mask, val_mask, and test_mask must not overlap."
 
-        # -------------------------------------------------------------
         # 5. Masks must cover all nodes
-        # -------------------------------------------------------------
-        all_covered = (
-                data.train_mask |
-                data.val_mask |
-                data.test_mask
-        )
+        all_covered = data.train_mask | data.val_mask | data.test_mask
+        assert all_covered.all(), f"ClassificationTask.prepare: {((~all_covered).sum().item())} nodes are not assigned to any mask."
 
-        if not all_covered.all():
-            missing = (~all_covered).sum().item()
-            raise ValueError(
-                f"ClassificationTask.prepare: {missing} nodes are not assigned to any mask. "
-                "Every node must belong to either train, validation, or test."
-            )
+        # 6. Training set must be non-empty
+        assert data.train_mask.sum().item() > 0, "ClassificationTask.prepare: train_mask contains zero nodes."
 
-        # -------------------------------------------------------------
-        # 6. Ensure training set is non-empty
-        # -------------------------------------------------------------
-        if data.train_mask.sum().item() == 0:
-            raise ValueError(
-                "ClassificationTask.prepare: train_mask contains zero nodes. "
-                "Training requires at least one labeled training node."
-            )
-
-        # -------------------------------------------------------------
-        # 7. Check that labels on train nodes are valid integers
-        # -------------------------------------------------------------
+        # 7. Labels on train nodes must be non-negative integers
         labels = data.y[data.train_mask]
-        if not torch.is_floating_point(data.y):
-            # integer labels
-            if (labels < 0).any():
-                raise ValueError(
-                    "ClassificationTask.prepare: Found negative class indices in data.y."
-                )
-        else:
-            raise TypeError(
-                "ClassificationTask.prepare: data.y must contain integer class indices, "
-                f"but got dtype {data.y.dtype}."
-            )
+        assert not torch.is_floating_point(
+            data.y), f"ClassificationTask.prepare: data.y must be integer, got {data.y.dtype}."
+        assert (labels >= 0).all(), "ClassificationTask.prepare: negative class indices found in data.y."
 
-        # -------------------------------------------------------------
-        # 8. Optional: ensure there is at least 1 sample per class in training
-        # -------------------------------------------------------------
-        unique_classes = labels.unique()
-        if unique_classes.numel() <= 1:
-            raise ValueError(
-                "ClassificationTask.prepare: Training set must contain at least two distinct "
-                "classes to compute CrossEntropyLoss."
-            )
+        # 8. At least 2 classes present
+        assert labels.unique().numel() > 1, "ClassificationTask.prepare: Training set must contain at least two distinct classes."
 
-        # -------------------------------------------------------------
-        # 9. Done — data is valid
-        # -------------------------------------------------------------
         return data
 
     # ----------------------------

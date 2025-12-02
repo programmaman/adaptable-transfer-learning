@@ -9,6 +9,8 @@ from torch_geometric.utils import degree
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+__all__ = ["logger"]
+
 def get_device():
     """
     Returns the best available device: GPU if available, otherwise CPU.

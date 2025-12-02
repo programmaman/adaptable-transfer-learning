@@ -20,8 +20,7 @@ class LinkPredictionTask(Task, ABC):
 
     def __init__(self, name="link_prediction", epochs=30, learning_rate=0.01,
                  weight_decay=5e-4, negative_sample_size=None, log_every=10):
-        super().__init__(name)
-        self.epochs = epochs
+        super().__init__(name, epochs=epochs)  # epochs handled by base class
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
         self.log_every = log_every

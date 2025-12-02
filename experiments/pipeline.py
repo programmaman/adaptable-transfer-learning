@@ -8,10 +8,8 @@ from typing import Iterable
 
 import numpy as np
 import torch
-from sklearn.decomposition import TruncatedSVD
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, \
     average_precision_score
-from torch import nn, functional
 
 from experiments.experiment_utils import EvaluationResult, sample_negative_edges, split_edges_for_link_prediction
 from tasks.task import Pretrain
@@ -22,25 +20,6 @@ logging.basicConfig(
     datefmt="%H:%M:%S"
 )
 logger = logging.getLogger(__name__)
-
-
-def _initialize_device(device):
-    if device is None:
-        chosen = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    else:
-        chosen = device if isinstance(device, torch.device) else torch.device(device)
-    logger.info(f"Selected device: {chosen}")
-    if torch.cuda.is_available() and getattr(chosen, "type", None) != "cuda":
-        logger.warning("CUDA is available but the selected device is not 'cuda'. This may lead to suboptimal performance.")
-    return chosen
-
-
-def _initialize_seed(seed):
-    if seed is not None:
-        return seed
-    generated_seed = int(time.time() * 1e6) % (2 ** 32)
-    logger.warning("No seed provided. Using time-based seed for reproducibility.")
-    return generated_seed
 
 
 class TaskPipeline:
@@ -66,7 +45,6 @@ class TaskPipeline:
         tasks: Iterable,
         pretrain_tasks: Iterable = None,
         pretrain_data=None,
-        pretrain_epochs=0,
         pretrained_snapshot_path="pretrained_snapshot.pt"
     ):
         if model is None:
@@ -93,16 +71,14 @@ class TaskPipeline:
         # --------------------------------------------------------------
         # PRETRAINING (with iterable)
         # --------------------------------------------------------------
-        if pretrain_tasks and pretrain_epochs > 0:
-            logger.info(f"Pretraining for {pretrain_epochs} epochs per task...")
-
+        if pretrain_tasks:
+            logger.info(f"Pretraining tasks...")  # no length
             for pretrain_task in pretrain_tasks:
                 logger.info(f"--- Pretraining Task: {pretrain_task.name} ---")
                 pretrainer = Pretrain(pretrain_task)
+                model, _ = pretrainer.run(model, pretrain_data)
 
-                for _ in range(pretrain_epochs):
-                    model, _ = pretrainer.run(model, pretrain_data)
-
+        # Save the pretrained model
         torch.save(model.state_dict(), pretrained_snapshot_path)
 
         # --------------------------------------------------------------
