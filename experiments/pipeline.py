@@ -14,6 +14,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from torch import nn, functional
 
 from experiments.experiment_utils import EvaluationResult, sample_negative_edges, split_edges_for_link_prediction
+from tasks.task import Pretrain
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,125 +45,102 @@ def _initialize_seed(seed):
 
 class TaskPipeline:
     """
-    A task-driven pipeline for GNN models.
-
-    Core lifecycle:
-        - prepare_data()
-        - pretrain()
-        - for each Task:
-            - task.prepare()
-            - task.train()
-            - task.evaluate()
+    A task-driven pipeline for GNN models with modular data preprocessing.
     """
 
-    def __init__(self, seed=None, device=None):
+    def __init__(self, seed=None, device=None, preprocessors: list = None):
         self.seed = self._initialize_seed(seed)
         self.device = self._initialize_device(device)
         self.metadata = {"seed": self.seed}
 
+        self.preprocessors = preprocessors or []
+
         self._validate_device()
         logger.info(f"Pipeline initialized | seed={self.seed} | device={self.device}")
 
-    # ----------------------------------------------------------------------
-    # MAIN ENTRYPOINT
     # ----------------------------------------------------------------------
     def run(
         self,
         model: torch.nn.Module,
         data,
         tasks: Iterable,
+        pretrain_tasks: Iterable = None,
         pretrain_data=None,
         pretrain_epochs=0,
         pretrained_snapshot_path="pretrained_snapshot.pt"
     ):
-        """
-        Orchestrates the full lifecycle of tasks in a modular way.
-        """
-
         if model is None:
             raise ValueError("Pipeline.run(): you must provide a model.")
         if not tasks:
             raise ValueError("Pipeline.run(): no tasks provided.")
 
         self._set_seed()
-
         start_total = time.time()
 
-        # ------------------------------------------------------------------
-        # Prepare Target Data
-        # ------------------------------------------------------------------
-        data = self.prepare_data(data).to(self.device)
+        # --------------------------------------------------------------
+        # Preprocess target data using DataProcessors
+        # --------------------------------------------------------------
+        data = self._apply_preprocessors(data).to(self.device)
 
-        # Determine pretraining dataset
+        # Pretrain dataset selection
         if pretrain_data is None:
+            logger.info("Structural Pretraining: Using target dataset for pretraining.")
             pretrain_data = data
         else:
-            logger.info("Transfer Learning: Using separate pretrain dataset.")
-            pretrain_data = self.prepare_data(pretrain_data).to(self.device)
+            logger.info("Transfer Learning: Using separate pretrain dataset with same structural pretraining objective.")
+            pretrain_data = self._apply_preprocessors(pretrain_data).to(self.device)
 
-        # ------------------------------------------------------------------
-        # PRETRAINING
-        # ------------------------------------------------------------------
-        if pretrain_epochs > 0:
-            logger.info(f"Pretraining for {pretrain_epochs} epochs...")
-            model = self.pretrain(model, pretrain_data, pretrain_epochs)
+        # --------------------------------------------------------------
+        # PRETRAINING (with iterable)
+        # --------------------------------------------------------------
+        if pretrain_tasks and pretrain_epochs > 0:
+            logger.info(f"Pretraining for {pretrain_epochs} epochs per task...")
 
-        logger.info(f"Saving pretrained snapshot → {pretrained_snapshot_path}")
+            for pretrain_task in pretrain_tasks:
+                logger.info(f"--- Pretraining Task: {pretrain_task.name} ---")
+                pretrainer = Pretrain(pretrain_task)
+
+                for _ in range(pretrain_epochs):
+                    model, _ = pretrainer.run(model, pretrain_data)
+
         torch.save(model.state_dict(), pretrained_snapshot_path)
 
-        # ------------------------------------------------------------------
+        # --------------------------------------------------------------
         # PER-TASK EXECUTION
-        # ------------------------------------------------------------------
+        # --------------------------------------------------------------
         results = {}
 
         for task in tasks:
             logger.info(f"\n===== Running Task: {task.name} =====")
 
-            # Clone model so each task starts from identical state
             model_copy = copy.deepcopy(model)
             model_copy.load_state_dict(
                 torch.load(pretrained_snapshot_path, map_location=self.device)
             )
 
-            # Prepare task-specific version of the data
-            task_data = task.prepare(data)
-
-            # Move to device
-            task_data = task_data.to(self.device)
-
-            # Train task head
+            task_data = task.prepare(data).to(self.device)
             model_copy = task.train(model_copy, task_data)
-
-            # Evaluate
             result = task.evaluate(model_copy, task_data)
 
-            # Merge inherited metadata
             result.metadata.update(self.metadata)
             result.metadata.update(task.metadata)
 
             results[task.name] = result
 
         self.metadata["total_time"] = time.time() - start_total
-
         return model, results
 
     # ----------------------------------------------------------------------
-    # ABSTRACT HOOKS (Overridable)
+    # INTERNAL: apply all registered DataProcessors
     # ----------------------------------------------------------------------
-
-    def prepare_data(self, data):
-        """Override for data preparation such as masks."""
+    def _apply_preprocessors(self, data):
+        for processor in self.preprocessors:
+            data = processor(data)
         return data
-
-    def pretrain(self, model, data, epochs):
-        """Default: no pretraining."""
-        logger.info("No pretraining implemented, skipping.")
-        return model
 
     # ----------------------------------------------------------------------
     # INTERNAL HELPERS
     # ----------------------------------------------------------------------
-
     @staticmethod
     def _initialize_seed(seed):
         if seed is not None:
@@ -189,6 +167,7 @@ class TaskPipeline:
         torch.manual_seed(self.seed)
         np.random.seed(self.seed)
         random.seed(self.seed)
+
 
 
 class Pipeline(ABC):
@@ -390,234 +369,12 @@ class Pipeline(ABC):
         raise NotImplementedError("Subclass must implement evaluate_classification")
 
     def train_link_prediction(self, model, data, rem_edge_list, epochs):
-        logger.info("Default: Skipping Link Pred training.")
-        return model
+        raise NotImplementedError("Subclass must implement train_link_prediction")
 
     def evaluate_link_prediction(self, model, data, rem_edge_list):
         raise NotImplementedError("Subclass must implement evaluate_link_prediction")
 
 
-
-class DefaultPipeline(Pipeline):
-    """
-    A default pipeline implementation.
-    Assumes models follow the standard PyG signature: model(x, edge_index).
-    """
-
-    # ------------------------------
-    # 1. Classification Training
-    # ------------------------------
-    # RENAMED from 'finetune_' to 'train_' to match Parent Abstract Class
-    def train_classification(self, model, data, labels, epochs=30,
-                             lr=0.01, weight_decay=5e-4, log_every=10):
-
-        optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
-        criterion = torch.nn.CrossEntropyLoss()
-
-        # OPTIMIZATION: Move to device ONCE, outside the loop
-        data = data.to(self.device)
-        labels = labels.to(self.device)
-
-        logger.info("Fine-tuning on Node Classification")
-        model.train()
-
-        for epoch in range(1, epochs + 1):
-            optimizer.zero_grad()
-            out = model(data.x, data.edge_index)
-
-            # Only calculate loss on train_mask
-            loss = criterion(out[data.train_mask], labels[data.train_mask])
-            loss.backward()
-            optimizer.step()
-
-            if epoch % log_every == 0 or epoch == epochs:
-                # We pass the mask explicitly to evaluate on Validation set during training
-                val_res = self.evaluate_classification(model, data, labels, mask=data.val_mask)
-                logger.info(f"Epoch {epoch:03d} | Loss {loss.item():.4f} | Val Acc {val_res.accuracy:.4f}")
-                model.train()  # Ensure we switch back to train mode after eval
-
-        return model
-
-    # ------------------------------
-    # 2. Classification Evaluation
-    # ------------------------------
-    def evaluate_classification(self, model, data, labels, mask=None, verbose=False):
-        # Default to Test Mask if no specific mask is provided
-        if mask is None:
-            mask = data.test_mask
-
-        data = data.to(self.device)
-        labels = labels.to(self.device)
-        mask = mask.to(self.device)
-
-        model.eval()
-        with torch.no_grad():
-            logits = model(data.x, data.edge_index)
-            # Filter by mask
-            logits = logits[mask]
-            trues = labels[mask].cpu().numpy()
-
-            # Get Probabilities for AUC
-            probs = torch.softmax(logits, dim=1).cpu().numpy()
-            # Get Hard Predictions for Acc/F1
-            preds = logits.argmax(dim=1).cpu().numpy()
-
-        acc = accuracy_score(trues, preds)
-        precision = precision_score(trues, preds, average='macro', zero_division=0)
-        recall = recall_score(trues, preds, average='macro', zero_division=0)
-        f1 = f1_score(trues, preds, average='macro', zero_division=0)
-
-        # BUG FIX: Use probabilities for AUC, handle multi-class exceptions
-        try:
-            if len(set(trues)) > 1:  # AUC needs at least 2 classes present
-                # Handle binary vs multiclass
-                if probs.shape[1] == 2:
-                    auc = roc_auc_score(trues, probs[:, 1])  # Binary uses prob of positive class
-                else:
-                    auc = roc_auc_score(trues, probs, multi_class='ovr', average='macro')
-            else:
-                auc = 0.0
-        except ValueError:
-            auc = 0.0
-
-        if verbose:
-            logger.info(f"Acc {acc:.4f} | F1 {f1:.4f} | AUC {auc:.4f}")
-
-        return EvaluationResult(
-            accuracy=acc, precision=precision, recall=recall,
-            f1=f1, auc=auc, preds=preds
-        )
-
-    # ------------------------------
-    # 3. Link Prediction Training
-    # ------------------------------
-    def train_link_prediction(self, model, data, rem_edge_list, epochs=30,
-                              lr=0.01, weight_decay=5e-4, log_every=10):
-
-        optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
-        bce_loss = torch.nn.BCEWithLogitsLoss()
-
-        data = data.to(self.device)
-        pos_edges = rem_edge_list[0].to(self.device)
-        n = data.num_nodes
-
-        logger.info("Fine-tuning on Link Prediction")
-        model.train()
-
-        for epoch in range(1, epochs + 1):
-            optimizer.zero_grad()
-
-            # Get node embeddings
-            z = model(data.x, data.edge_index)
-
-            # Negative Sampling (Random edges that don't exist)
-            # (Assuming sample_negative_edges is an external helper function)
-            neg_edges = sample_negative_edges(pos_edges, num_nodes=n).to(self.device)
-
-            # Decode: Dot product
-            pos_scores = (z[pos_edges[0]] * z[pos_edges[1]]).sum(dim=1)
-            neg_scores = (z[neg_edges[0]] * z[neg_edges[1]]).sum(dim=1)
-
-            logits = torch.cat([pos_scores, neg_scores])
-            # Labels: 1 for real edges, 0 for fake edges
-            edge_labels = torch.cat([torch.ones_like(pos_scores), torch.zeros_like(neg_scores)])
-
-            loss = bce_loss(logits, edge_labels)
-            loss.backward()
-            optimizer.step()
-
-            if epoch % log_every == 0:
-                logger.info(f"Epoch {epoch:03d} | LP Loss {loss.item():.4f}")
-
-        return model
-
-    # ------------------------------
-    # 4. Link Prediction Evaluation
-    # ------------------------------
-    def evaluate_link_prediction(self, model, data, rem_edge_list, verbose=False):
-        model.eval()
-        data = data.to(self.device)
-
-        with torch.no_grad():
-            z = model(data.x, data.edge_index)
-
-        pos_edges = rem_edge_list[2].to(self.device)
-        n = data.num_nodes
-
-        # Sample negatives for evaluation
-        neg_edges = sample_negative_edges(pos_edges, num_nodes=n).to(self.device)
-
-        # Decode
-        pos_scores = (z[pos_edges[0]] * z[pos_edges[1]]).sum(dim=1)
-        neg_scores = (z[neg_edges[0]] * z[neg_edges[1]]).sum(dim=1)
-
-        scores = torch.cat([pos_scores, neg_scores]).cpu()
-        labels = torch.cat([torch.ones_like(pos_scores), torch.zeros_like(neg_scores)]).cpu()
-
-        # Convert logits to probabilities via Sigmoid
-        probs = torch.sigmoid(scores)
-        preds = (probs > 0.5).float()
-
-        # Metrics
-        auc = roc_auc_score(labels, probs)  # Use probabilities for AUC
-        ap = average_precision_score(labels, probs)
-        acc = accuracy_score(labels, preds)
-        f1 = f1_score(labels, preds, zero_division=0)
-
-        if verbose:
-            logger.info(f"LP Test Results | Acc {acc:.4f} | F1 {f1:.4f} | AUC {auc:.4f} | AP {ap:.4f}")
-
-        return EvaluationResult(
-            accuracy=acc, precision=0, recall=0,  # Simplified return
-            f1=f1, auc=auc, ap=ap, preds=preds
-        )
-
-
-# pipeline.py (continue after DefaultPipeline)
-
-class TransferLearningPipeline(DefaultPipeline):
-    """
-    A pipeline that implements transfer learning by pretraining
-    the model on a separate dataset (source_data, source_labels)
-    before fine-tuning on the target dataset.
-    """
-
-    def __init__(self, source_data, source_labels,
-                 seed=None, device=None,
-                 train_ratio=0.6, val_ratio=0.2):
-        super().__init__(seed=seed, device=device,
-                         train_ratio=train_ratio, val_ratio=val_ratio)
-        self.source_data = source_data.to(self.device)
-        self.source_labels = source_labels.to(self.device)
-
-    def pretrain(self, model, data, epochs=50,
-                 lr=0.01, weight_decay=5e-4, log_every=10):
-        """
-        Pretrain the model on a different dataset (self.source_data, self.source_labels).
-        This is standard supervised training — NOT structural pretraining.
-        """
-        optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
-        criterion = torch.nn.CrossEntropyLoss()
-
-        logger.info("Pretraining on source dataset (transfer learning).")
-        for epoch in range(1, epochs + 1):
-            model.train()
-            optimizer.zero_grad()
-            out = model(self.source_data.x, self.source_data.edge_index)
-            loss = criterion(out[self.source_data.train_mask],
-                             self.source_labels[self.source_data.train_mask])
-            loss.backward()
-            optimizer.step()
-
-            if epoch % log_every == 0 or epoch == epochs:
-                val_result = self.evaluate_classification(
-                    model, self.source_data, self.source_labels,
-                    mask=self.source_data.val_mask
-                )
-                logger.info(f"[Pretrain Epoch {epoch:03d}] "
-                            f"Loss {loss.item():.4f} | Val Acc {val_result.accuracy:.4f}")
-
-        return model
 
 
 class StructGPipeline(Pipeline):
@@ -779,76 +536,3 @@ class StructGPipeline(Pipeline):
         return EvaluationResult(acc, precision, recall, f1, auc, ap, preds)
 
 
-class GraphLoRAPipeline(DefaultPipeline):
-    def __init__(self, base_model_path, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.base_model_path = base_model_path
-
-    class GraphLoRAPipeline(DefaultPipeline):
-        def __init__(self, base_model_path, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            self.base_model_path = base_model_path
-
-        def pretrain(self, model, data, epochs=100, lr=0.01, weight_decay=5e-4,
-                     feat_reduce_dim=256, safety_factor=0.7):
-            """
-            Memory-aware pretraining with optional feature reduction.
-
-            Args:
-                model: GraphLoRAWrapped backbone.
-                data: PyG Data object.
-                epochs: Number of pretrain epochs.
-                lr, weight_decay: Optimizer params.
-                feat_reduce_dim: Dim for SVD reduction if needed.
-                safety_factor: Fraction of free GPU memory allowed.
-            """
-            logger.info("Pretraining GraphLoRA backbone with feature reconstruction")
-
-            # --- Step 1: Memory Check and Optional Feature Reduction ---
-            number_of_nodes, number_of_features = data.x.size()
-            required_bytes = number_of_nodes * number_of_features * 4 * 2  # float32, input + recon
-            logger.info(f"Feature matrix size: {number_of_nodes} nodes × {number_of_features} features")
-            logger.info(f"Estimated memory required for full reconstruction: {required_bytes / 1e9:.2f} GB")
-
-            use_reduction = False
-            if torch.cuda.is_available():
-                free_mem = torch.cuda.mem_get_info()[0]
-                if required_bytes > free_mem * safety_factor:
-                    use_reduction = True
-
-            if use_reduction:
-                logger.info(f"[Pretrain] Reducing features from {number_of_features} to {feat_reduce_dim}")
-                x_cpu = data.x.cpu().numpy()
-                svd = TruncatedSVD(n_components=feat_reduce_dim, random_state=self.seed)
-                x_reduced = torch.tensor(svd.fit_transform(x_cpu), dtype=torch.float32)
-                data = data.__class__(x=x_reduced.to(self.device), edge_index=data.edge_index)
-                model.reset_with_input_dim(data.x.size(1))
-
-            decoder = nn.Linear(model.gnn_frozen.conv[-1].out_channels, data.x.size(1)).to(self.device)
-            optimizer = torch.optim.Adam(
-                list(model.gnn_frozen.parameters()) + list(decoder.parameters()),
-                lr=lr, weight_decay=weight_decay
-            )
-
-            data = data.to(self.device)
-
-            # --- Step 2: Training Loop (Full-batch) ---
-            for epoch in range(epochs):
-                model.gnn_frozen.train()
-                decoder.train()
-                optimizer.zero_grad()
-
-                emb = model.gnn_frozen(data.x, data.edge_index)
-                recon = decoder(emb)
-                loss = functional.mse_loss(recon, data.x)
-                loss.backward()
-                optimizer.step()
-
-                if (epoch + 1) % 10 == 0:
-                    logger.info(f"[Pretrain {epoch + 1:03d}] Loss {loss.item():.4f}")
-
-            # --- Step 3: Save Backbone ---
-            os.makedirs(os.path.dirname(self.base_model_path), exist_ok=True)
-            torch.save(model.gnn_frozen.state_dict(), self.base_model_path)
-            logger.info(f"Saved pretrained weights to {self.base_model_path}")
-            return model
