@@ -13,7 +13,7 @@ class Node2VecEncoder(StructuralInformationEncoder):
 
     def __init__(self, num_nodes, edge_index, embedding_dim=128,
                  walk_length=10, context_size=5, walks_per_node=10,
-                 num_negative_samples=1, p=1.0, q=1.0, sparse=True):
+                 num_negative_samples=1, p=1.0, q=1.0, sparse=True, device='cpu'):
         super().__init__()
 
         self.node2vec = pyg_nn.Node2Vec(
@@ -27,6 +27,7 @@ class Node2VecEncoder(StructuralInformationEncoder):
             p=p, q=q,
             sparse=sparse
         )
+        self.node2vec.to(device)
         self._embedding_dim = embedding_dim
 
     @property

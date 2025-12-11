@@ -1,11 +1,3 @@
-dgl
-torch
-torch-geometric
-torch-cluster
-torchvision
-torchaudio
-torchdata==0.8.0
-networkx
 ogb
 gensim
 numpy
@@ -15,4 +7,3 @@ openpyxl
 seaborn
 statsmodels
 matplotlib
-

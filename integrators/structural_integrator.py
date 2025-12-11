@@ -146,7 +146,7 @@ class SimpleFeatureGate(Gate):
         if node_indices is None:
             node_indices = torch.arange(
                 node_features.size(0),
-                device=node_features.device
+                device='cpu'
             )
 
         feature_subset = node_features[node_indices]

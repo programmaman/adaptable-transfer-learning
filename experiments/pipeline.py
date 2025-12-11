@@ -127,10 +127,10 @@ class TaskPipeline:
             chosen = device if isinstance(device, torch.device) else torch.device(device)
 
         logger.info(f"Selected device: {chosen}")
-        return chosen
+        return 'cpu'
 
     def _validate_device(self):
-        if torch.cuda.is_available() and self.device.type != "cuda":
+        if torch.cuda.is_available() and self.device != "cuda":
             logger.warning("CUDA available but pipeline device is CPU — expect slower training.")
 
     def _set_seed(self):
