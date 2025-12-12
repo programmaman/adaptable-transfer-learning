@@ -8,12 +8,12 @@ from torch_geometric.nn import GCNConv
 
 # Assumed Imports
 from encoders.node2vec_encoder import Node2VecEncoder
-from experiments.pipeline import TaskPipeline
+from pipeline.pipeline import TaskPipeline
 # Ensure AdaptiveGate is imported or defined above
 from integrators.structural_integrator import SimpleFeatureGate, SelfSupervisedGate, AdaptiveGate, \
     CombinedAdaptiveSelfSupervisedGate
 from tasks.task import Task
-from experiments.experiment_utils import generate_synthetic_graph
+from utilities.experiment_utils import generate_synthetic_graph
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger("GatingExp")

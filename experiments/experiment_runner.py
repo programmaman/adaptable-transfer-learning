@@ -6,12 +6,12 @@ import torch
 from torch_geometric.utils import to_networkx
 import pandas as pd  # For storing and saving results
 
-from .experiment_utils import (
+from utilities.experiment_utils import (
     generate_synthetic_graph,
     load_musae_facebook_dataset,
-    load_email_eu_core_dataset, load_twitch_gamers_dataset, load_deezer_europe_dataset,
+    load_email_eu_core_dataset, load_deezer_europe_dataset,
 )
-from experiments.experiment_utils import load_musae_github_dataset
+from utilities.experiment_utils import load_musae_github_dataset
 from experiments.gat_pipeline import run_gat_pipeline
 from experiments.gnn_pipeline import run_pipeline
 from experiments.graph_sage_pipeline import run_graphsage_pipeline

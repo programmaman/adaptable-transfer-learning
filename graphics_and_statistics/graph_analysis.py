@@ -2,11 +2,8 @@ import os
 import networkx as nx
 import pandas as pd
 from torch_geometric.utils import to_networkx
-from experiments.experiment_utils import (
-    generate_synthetic_graph,
-    load_email_eu_core_dataset,
-    load_musae_facebook_dataset,
-    load_musae_github_dataset, load_deezer_europe_dataset,
+from utilities.experiment_utils import (
+    load_deezer_europe_dataset,
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))

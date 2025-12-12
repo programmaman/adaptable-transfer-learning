@@ -8,7 +8,7 @@ from sklearn.metrics import (
     roc_auc_score, average_precision_score
 )
 
-from experiments.experiment_utils import sample_negative_edges, split_edges_for_link_prediction, EvaluationResult
+from utilities.experiment_utils import sample_negative_edges, split_edges_for_link_prediction, EvaluationResult
 from utils import get_device
 
 
@@ -403,7 +403,7 @@ def finetune_link_prediction(
         embeddings = model(data.x, data.edge_index, node_indices)
 
         # Supervised link prediction loss on held-out edges
-        loss = model.link_prediction_loss(embeddings, rem_edge_list[0][0].T.to(device), neg_sample_size=neg_sample_size)
+        loss = model.link_prediction_loss(embeddings, rem_edge_list[0][0].transforms.to(device), neg_sample_size=neg_sample_size)
 
         loss.backward()
         optimizer.step()
@@ -435,7 +435,7 @@ def run_structg_pipeline(
         seed: int = 42,
         num_classes: int = None,
 ):
-    from experiments.experiment_utils import set_global_seed
+    from utilities.experiment_utils import set_global_seed
 
     set_global_seed(seed)
     device = get_device()

@@ -1,10 +1,8 @@
 
 import torch.nn as nn
 from torch_geometric.transforms import SVDFeatureReduction
-from torch_geometric.utils import to_dense_adj, add_remaining_self_loops
+from torch_geometric.utils import add_remaining_self_loops
 from torch_geometric.loader import DataLoader
-
-from experiments.experiment_utils import generate_synthetic_graph
 
 
 class Projector(nn.Module):
@@ -35,7 +33,6 @@ class LogReg(nn.Module):
 
 def transfer(args, config, gpu_id, is_reduction,
              pretrain_dataset=None, test_dataset=None):
-    import math
     from torch_geometric.utils import negative_sampling
 
     device = torch.device(f'cuda:{gpu_id}' if torch.cuda.is_available() else 'cpu')
@@ -298,11 +295,9 @@ def transfer(args, config, gpu_id, is_reduction,
 
 from torch_geometric.nn import GCNConv, GATConv, TransformerConv
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 from torch_geometric.nn.dense.linear import Linear
 from typing import Tuple
-from torch import Tensor, device
+from torch import Tensor
 
 
 class GNN(torch.nn.Module):
@@ -487,7 +482,7 @@ class SMMDLoss(nn.Module):
     def linear_mmd2(self, f_of_X, f_of_Y):
         loss = 0.0
         delta = f_of_X.float().mean(0) - f_of_Y.float().mean(0)
-        loss = delta.dot(delta.T)
+        loss = delta.dot(delta.transforms)
         return loss
 
     def forward(self, source, target, ppr=None):

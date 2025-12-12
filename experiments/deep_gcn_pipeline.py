@@ -2,9 +2,9 @@ import torch
 import torch.nn.functional as f
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, \
     average_precision_score, classification_report
-from experiments.experiment_utils import split_edges_for_link_prediction, sample_negative_edges
+from utilities.experiment_utils import split_edges_for_link_prediction, sample_negative_edges
 
-from experiments.experiment_utils import EvaluationResult
+from utilities.experiment_utils import EvaluationResult
 from models.deep_gcn import (
     ThreeLayerGCN,
     GnnClassifierHead,
@@ -121,7 +121,7 @@ def evaluate_link_prediction(model, data, rem_edge_list, device='cpu') -> Evalua
 
 
 def run_structural_gcn_pipeline(data, labels, hidden_dim=64, mid_dim=32, pretrain_epochs=100, finetune_epochs=30, seed=None):
-    from experiments.experiment_utils import set_global_seed
+    from utilities.experiment_utils import set_global_seed
     import time
 
     if seed is not None:

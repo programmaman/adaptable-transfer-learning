@@ -1,4 +1,3 @@
-import math
 import time
 import torch
 import torch.nn as nn
@@ -8,7 +7,7 @@ from sklearn.metrics import (
     roc_auc_score, average_precision_score
 )
 
-from experiments.experiment_utils import (
+from utilities.experiment_utils import (
     split_edges_for_link_prediction,
     sample_negative_edges,
     EvaluationResult,

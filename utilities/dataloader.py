@@ -16,9 +16,10 @@ All loaders return:
     metadata: dict (optional)
 """
 
-import os
 import json
 import random
+from typing import Tuple, Dict, Any
+
 import torch
 import numpy as np
 import pandas as pd
@@ -28,7 +29,7 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.cluster import KMeans
 from torch_geometric.data import Data
 from torch_geometric.utils import add_remaining_self_loops
-import torch_geometric.transforms as T
+import torch_geometric.transforms as transforms
 from torch_geometric.datasets import Planetoid, Amazon
 from torch_geometric.transforms import SVDFeatureReduction
 
@@ -54,41 +55,68 @@ def apply_feature_reduction(dataset, out_channels=100):
     reducer = SVDFeatureReduction(out_channels=out_channels)
     return reducer(dataset)
 
+def _ensure_masks(data, train_ratio=0.6, val_ratio=0.2):
+    if all(hasattr(data, attr) for attr in ("train_mask", "val_mask", "test_mask")):
+        return data
+    num_nodes = data.num_nodes
+    perm = torch.randperm(num_nodes)
+    train_end = int(train_ratio * num_nodes)
+    val_end = train_end + int(val_ratio * num_nodes)
+
+    data.train_mask = torch.zeros(num_nodes, dtype=torch.bool)
+    data.val_mask = torch.zeros(num_nodes, dtype=torch.bool)
+    data.test_mask = torch.zeros(num_nodes, dtype=torch.bool)
+
+    data.train_mask[perm[:train_end]] = True
+    data.val_mask[perm[train_end:val_end]] = True
+    data.test_mask[perm[val_end:]] = True
+    return data
 
 # ----------------------------------------------------------------------
 # Built-in datasets
 # ----------------------------------------------------------------------
 def load_pyg_dataset(name: str, root: str = "./datasets"):
     name = name.lower()
-    transform = T.NormalizeFeatures()
+    transform = transforms.NormalizeFeatures()
     if name in ["computers", "photo"]:
         dataset = Amazon(root, name.capitalize(), transform)
     elif name in ["cora", "citeseer", "pubmed"]:
-        dataset = Planetoid(root, name.capitalize(), transform)
+        dataset = Planetoid(root=root, name=name.capitalize(), transform=transform)
     else:
         raise ValueError(f"Unknown built-in dataset: {name}")
-    data = dataset[0]
+    data = _ensure_masks(dataset[0])
     return data, data.y, {"source": "pyg_builtin"}
-
 
 # ----------------------------------------------------------------------
 # Synthetic dataset
 # ----------------------------------------------------------------------
-def generate_synthetic_graph(num_nodes=1000, num_edges=1500, feature_dim=16, num_classes=5):
+
+
+def generate_synthetic_graph(
+        num_nodes: int = 1000,
+        num_edges: int = 1500,
+        feature_dim: int = 16,
+        num_classes: int = 5
+) -> Tuple[Data, torch.Tensor, Dict[str, Any]]:
+    # Generate random node features and edges
     x = torch.randn((num_nodes, feature_dim))
     edge_index = torch.randint(0, num_nodes, (2, num_edges), dtype=torch.long)
     data = Data(x=x, edge_index=edge_index, num_nodes=num_nodes)
 
-    # Structural features via clustering coefficients
+    # Compute clustering coefficients
     g = nx.Graph()
-    g.add_edges_from(edge_index.t().tolist())
     g.add_nodes_from(range(num_nodes))
+    g.add_edges_from(edge_index.t().tolist())
     clustering = nx.clustering(g)
     data.structural_targets = torch.tensor([clustering[i] for i in range(num_nodes)], dtype=torch.float)
 
-    # Semi-structured labels via k-means
-    labels = torch.tensor(KMeans(n_clusters=num_classes, random_state=42).fit(x.numpy()).labels_)
-    print(f"[Synthetic] {num_nodes} nodes | {num_edges} edges | {feature_dim} features")
+    # Generate labels using k-means clustering
+    kmeans = KMeans(n_clusters=num_classes, random_state=42, n_init='auto')
+    kmeans.fit(x.numpy())
+    labels = torch.tensor(kmeans.labels_, dtype=torch.long)
+    data.y = labels
+
+    print(f"[Synthetic] {num_nodes} nodes | {num_edges} edges | {feature_dim} features | {num_classes} classes")
     return data, labels, {"source": "synthetic"}
 
 
@@ -97,7 +125,7 @@ def generate_synthetic_graph(num_nodes=1000, num_edges=1500, feature_dim=16, num
 # ----------------------------------------------------------------------
 def load_deezer_europe(edge_path, features_path, target_path):
     edges_df = pd.read_csv(edge_path)
-    edge_index = torch.tensor(edges_df[["node_1", "node_2"]].values.T, dtype=torch.long)
+    edge_index = torch.tensor(edges_df[["node_1", "node_2"]].values.transforms, dtype=torch.long)
 
     with open(features_path, "r") as f:
         features_dict = json.load(f)
@@ -127,7 +155,6 @@ def load_deezer_europe(edge_path, features_path, target_path):
 def load_twitch_gamers(edge_path, meta_path, use_metadata_as_features=True):
     meta_df = pd.read_csv(meta_path)
     node_ids = sorted(meta_df["numeric_id"].unique())
-    node_id_map = {nid: i for i, nid in enumerate(node_ids)}
     num_nodes = len(node_ids)
 
     if use_metadata_as_features:
@@ -139,7 +166,7 @@ def load_twitch_gamers(edge_path, meta_path, use_metadata_as_features=True):
     labels = torch.tensor(meta_df["mature"].astype(int).values, dtype=torch.long)
 
     edge_df = pd.read_csv(edge_path)
-    edge_index = torch.tensor(edge_df[["numeric_id_1", "numeric_id_2"]].values.T, dtype=torch.long)
+    edge_index = torch.tensor(edge_df[["numeric_id_1", "numeric_id_2"]].values.transforms, dtype=torch.long)
     data = Data(x=x, edge_index=edge_index)
     return data, labels, {"source": "twitch_gamers"}
 
@@ -233,3 +260,18 @@ def load_dataset(name: str, root: str = "./datasets", **kwargs):
         return generate_synthetic_graph(**kwargs)
     else:
         raise ValueError(f"Unknown dataset name: {name}")
+
+def get_all_dataset_names():
+    return [
+        "Cora",
+        "CiteSeer",
+        "PubMed",
+        "Computers",
+        "Photo",
+        "Deezer-Europe",
+        "Twitch-Gamers",
+        "MUSAE-Facebook",
+        "MUSAE-GitHub",
+        "Email-EU-Core",
+        "Synthetic"
+    ]

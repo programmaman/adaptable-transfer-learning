@@ -9,3 +9,5 @@ openpyxl
 seaborn
 statsmodels
 matplotlib
+
+networkx

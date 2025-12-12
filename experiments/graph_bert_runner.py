@@ -1,18 +1,14 @@
 import os
 import pandas as pd
-import torch
 
 from experiments.graph_bert_pipeline import run_graphbert_pipeline
-from experiments.experiment_utils import (
+from utilities.experiment_utils import (
     generate_synthetic_graph,
     load_musae_facebook_dataset,
     load_email_eu_core_dataset,
     load_musae_github_dataset,
     load_deezer_europe_dataset,
 )
-from torch_geometric.utils import to_networkx
-import networkx as nx
-
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 

@@ -5,7 +5,7 @@ from pathlib import Path
 import unittest
 import torch
 
-from experiments.pipeline import TaskPipeline
+from pipeline.pipeline import TaskPipeline
 from models.gcn import GCN
 from tasks.node_classification import NodeClassificationTask
 

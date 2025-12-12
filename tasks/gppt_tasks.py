@@ -3,7 +3,7 @@ from typing import Any
 import torch
 from torch import nn
 
-from experiments.experiment_utils import EvaluationResult, sample_negative_edges
+from utilities.experiment_utils import EvaluationResult, sample_negative_edges
 
 from tasks.task import Task
 
@@ -172,7 +172,7 @@ class PromptSAGELinkPredictionTask(Task):
         self.dgl_graph.ndata['feat'] = data.x.to(self.device)
 
         # Positive edges for training
-        self.pos_edges = self.rem_edge_list[0][0].T.to(self.device)  # shape (E, 2)
+        self.pos_edges = self.rem_edge_list[0][0].transforms.to(self.device)  # shape (E, 2)
 
     # -------------------------
     # Train / Fine-tune
@@ -214,7 +214,7 @@ class PromptSAGELinkPredictionTask(Task):
             emb = model.forward_smc(self.dgl_graph, self.dgl_graph.ndata['feat'])
 
             # Positive edges for evaluation
-            pos_edges = self.rem_edge_list[1][0].T.to(self.device)
+            pos_edges = self.rem_edge_list[1][0].transforms.to(self.device)
             neg_edges = sample_negative_edges(pos_edges, self.dgl_graph.num_nodes()).to(self.device)
 
             pos_scores = (emb[pos_edges[:, 0]] * emb[pos_edges[:, 1]]).sum(dim=-1)

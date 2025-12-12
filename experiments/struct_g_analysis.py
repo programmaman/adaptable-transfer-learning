@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import torch
 from sklearn.manifold import TSNE
 
-from experiments.experiment_utils import load_musae_facebook_dataset
+from utilities.experiment_utils import load_musae_facebook_dataset
 from utils import get_device
 
 # ---------------------------

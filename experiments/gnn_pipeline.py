@@ -1,9 +1,9 @@
-from experiments.experiment_utils import split_edges_for_link_prediction, sample_negative_edges
+from utilities.experiment_utils import split_edges_for_link_prediction, sample_negative_edges
 import torch
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, \
     average_precision_score
 
-from experiments.experiment_utils import EvaluationResult, set_global_seed
+from utilities.experiment_utils import EvaluationResult
 from models.gcn import GCN
 
 
@@ -240,7 +240,7 @@ def evaluate_link_prediction(model, data, rem_edge_list) -> EvaluationResult:
 def run_pipeline(data, labels,
                  pretrain_epochs=100, finetune_epochs=30,
                  seed=None):
-    from experiments.experiment_utils import set_global_seed
+    from utilities.experiment_utils import set_global_seed
     import time
 
     start_time = time.time()

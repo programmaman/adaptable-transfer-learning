@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 from sklearn.metrics import (
-    confusion_matrix,
     roc_auc_score,
     average_precision_score,
     accuracy_score,
@@ -11,7 +10,7 @@ from sklearn.metrics import (
     classification_report
 )
 
-from experiments.experiment_utils import EvaluationResult
+from utilities.experiment_utils import EvaluationResult
 from models.gpt_gnn import GPT_GNN, GNN, Classifier
 
 
@@ -374,7 +373,7 @@ def evaluate_gpt_link_prediction(model, data, rem_edge_list, ori_edge_list, devi
 # ------------------------
 def run_gpt_gnn_pipeline(data, labels, hidden_dim=64, num_layers=2, num_heads=2,
                          pretrain_epochs=100, finetune_epochs=30, seed=None):
-    from experiments.experiment_utils import set_global_seed
+    from utilities.experiment_utils import set_global_seed
     import time
     """
     Orchestrates the full GPT-GNN workflow:

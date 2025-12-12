@@ -5,7 +5,7 @@ from sklearn.metrics import (
     average_precision_score
 )
 
-from experiments.experiment_utils import (
+from utilities.experiment_utils import (
     EvaluationResult,
     split_edges_for_link_prediction,
     sample_negative_edges
@@ -13,7 +13,7 @@ from experiments.experiment_utils import (
 from tasks.task import Task
 
 
-class LinkPredictionTask(Task, ABC):
+class LinkPredictionTask(Task):
     """
     Link prediction task using dot-product decoding.
     """
@@ -55,18 +55,47 @@ class LinkPredictionTask(Task, ABC):
         )
         loss_function = torch.nn.BCEWithLogitsLoss()
 
-        positive_edges = data.remaining_edges_list[0].to(data.x.device)
+        # Extract raw edges (E, 2)
+        positive_edges_raw = data.remaining_edges_list[0][0]
+
+        # -------------------------------------------------------
+        # Debug prints
+        # -------------------------------------------------------
+        print("\n=== LinkPredictionTask.train Debug ===")
+        print("data keys:", list(data.keys()))
+        print("remaining_edges_list keys:", data.remaining_edges_list.keys())
+        print("remaining_edges_list[0] type:", type(data.remaining_edges_list[0]))
+        print("remaining_edges_list[0][0] type:", type(positive_edges_raw))
+        print("positive_edges_raw shape:", positive_edges_raw.shape)
+        print("positive_edges_raw device:", positive_edges_raw.device)
+        print("positive_edges_raw dtype:", positive_edges_raw.dtype)
+        print("positive_edges_raw sample (first 5):")
+        print(positive_edges_raw[:5])
+
+        # (2, E) for scoring
+        positive_edges = positive_edges_raw.t().contiguous().to(data.x.device)
+
+        print("positive_edges (transposed) shape:", positive_edges.shape)
+        print("positive_edges device:", positive_edges.device)
+        print("num_nodes:", data.num_nodes)
+        print("======================================\n")
+
         number_of_nodes = data.num_nodes
 
+        # -------------------------------------------------------
+        # Training Loop
+        # -------------------------------------------------------
         for epoch in range(1, self.epochs + 1):
             model.train()
             optimizer.zero_grad()
 
             node_embeddings = model(data.x, data.edge_index)
 
-            negative_edges = sample_negative_edges(
-                positive_edges, num_nodes=number_of_nodes
+            negative_edges_raw = sample_negative_edges(
+                positive_edges_raw, num_nodes=number_of_nodes
             ).to(node_embeddings.device)
+
+            negative_edges = negative_edges_raw.t().contiguous()
 
             positive_scores = (node_embeddings[positive_edges[0]] *
                                node_embeddings[positive_edges[1]]).sum(dim=1)
@@ -98,11 +127,18 @@ class LinkPredictionTask(Task, ABC):
         with torch.no_grad():
             node_embeddings = model(data.x, data.edge_index)
 
-        positive_edges = data.remaining_edges_list[2].to(data.x.device)
+        positive_edges_raw = data.remaining_edges_list[0][0]
+
+        positive_edges = torch.tensor(
+            positive_edges_raw,
+            dtype=torch.long,
+            device=data.x.device
+        ).t().contiguous()
+
         number_of_nodes = data.num_nodes
 
         negative_edges = sample_negative_edges(
-            positive_edges, num_nodes=number_of_nodes
+            positive_edges_raw, num_nodes=number_of_nodes
         ).to(node_embeddings.device)
 
         positive_scores = (node_embeddings[positive_edges[0]] *

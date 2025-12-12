@@ -6,7 +6,7 @@ import torch.nn.functional as f
 import torch.optim as optim
 import torch_geometric.nn as pyg_nn
 
-from experiments.experiment_utils import sample_negative_edges
+from utilities.experiment_utils import sample_negative_edges
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

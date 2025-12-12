@@ -1,11 +1,12 @@
+import torch
 import torch.nn as nn
-from typing import Any, Tuple, List, Callable, Dict, Union
+from typing import Any, Tuple, List, Callable
 
-# The return type is now just the PyTorch model
-ModelSetup = nn.Module
+from models.gat import GAT
+from models.graphsage import GraphSAGE
 
 
-class GNNFactory:
+class ModelFactory:
     """
     Factory class to initialize specific GNN models based on input data
     dimensions (num_features, num_classes).
@@ -17,46 +18,77 @@ class GNNFactory:
     until the concrete model logic is added.
     """
 
-    # --- Individual Model Initialization Methods ---
-
     @staticmethod
-    def initialize_gcn(data: Any, labels: Any) -> ModelSetup:
+    def initialize_gcn(data: Any, labels: Any) -> nn.Module:
         """Initializes a generic GNN model (e.g.,  GCN)."""
-        # Note: I renamed this from initialize_gcn to initialize_gnn
-        # to match the name used in your initialize_all return list ("GNN").
         raise NotImplementedError("GNN model initialization is not implemented.")
 
     @staticmethod
     #TODO Replace with multi-layer gcn argument
-    def initialize_deep_gcn(data: Any, labels: Any) -> ModelSetup:
+    def initialize_deep_gcn(data: Any, labels: Any) -> nn.Module:
         """Initializes a Deep GCN model."""
         raise NotImplementedError("Deep GCN model initialization is not implemented.")
 
     @staticmethod
-    def initialize_gpt_gnn(data: Any, labels: Any) -> ModelSetup:
+    def initialize_gpt_gnn(data: Any, labels: Any) -> nn.Module:
         """Initializes a GPT-GNN model."""
         raise NotImplementedError("GPT-GNN model initialization is not implemented.")
 
     @staticmethod
-    def initialize_structg(data: Any, labels: Any) -> ModelSetup:
+    def initialize_structg(data: Any, labels: Any) -> nn.Module:
         """Initializes a Struct-G model."""
         # This method is used by two separate pipeline configurations
         raise NotImplementedError("Struct-G model initialization is not implemented.")
 
     @staticmethod
-    def initialize_graphsage(data: Any, labels: Any) -> ModelSetup:
+    def initialize_graphsage(data: Any, labels: Any) -> nn.Module:
         """Initializes a GraphSAGE model."""
-        raise NotImplementedError("GraphSAGE model initialization is not implemented.")
+        # Assuming GraphSAGE is available in the current context
+
+        if hasattr(data, 'num_features'):
+            in_dim = data.num_features
+        elif hasattr(data, 'x') and hasattr(data.x, 'shape'):
+            in_dim = data.x.shape[-1]
+        else:
+            raise ValueError("Cannot determine input dimension (in_dim) from data.")
+
+        if hasattr(labels, 'num_classes'):
+            num_classes = labels.num_classes
+        elif isinstance(labels, torch.Tensor):
+            num_classes = len(torch.unique(labels))
+        else:
+            raise ValueError("Cannot determine number of classes (num_classes) from labels.")
+
+        # According to the GNNFactory contract, we return a single nn.Module.
+        # We initialize the model with the dimension needed for the final downstream task (classification).
+        base_model = GraphSAGE(in_channels=in_dim, out_channels=num_classes)
+        return base_model
 
     @staticmethod
-    def initialize_gat(data: Any, labels: Any) -> ModelSetup:
+    def initialize_gat(data: Any, labels: Any) -> nn.Module:
         """Initializes a GAT model."""
-        raise NotImplementedError("GAT model initialization is not implemented.")
+
+        if hasattr(data, 'num_features'):
+            in_dim = data.num_features
+        elif hasattr(data, 'x') and hasattr(data.x, 'shape'):
+            in_dim = data.x.shape[-1]
+        else:
+            raise ValueError("Cannot determine input dimension (in_dim) from data.")
+
+        if hasattr(labels, 'num_classes'):
+            num_classes = labels.num_classes
+        elif isinstance(labels, torch.Tensor):
+            num_classes = len(torch.unique(labels))
+        else:
+            raise ValueError("Cannot determine number of classes (num_classes) from labels.")
+        heads = 8
+        base_model = GAT(in_channels=in_dim, out_channels=num_classes, heads=heads)
+        return base_model
 
     # --- Initialization of All Models ---
 
     @staticmethod
-    def initialize_all() -> List[Tuple[str, Callable[[Any, Any], ModelSetup]]]:
+    def initialize_all() -> List[Tuple[str, Callable[[Any, Any], nn.Module]]]:
         """
         Returns a list of tuples, where each tuple contains:
         1. The user-friendly name of the pipeline/model.
@@ -67,63 +99,10 @@ class GNNFactory:
         """
         return [
             # I use initialize_gnn here to match the pipeline name "GNN"
-            ("GNN", GNNFactory.initialize_gcn),
-            ("Deep GCN", GNNFactory.initialize_deep_gcn),
-            ("GPT-GNN", GNNFactory.initialize_gpt_gnn),
-            ("Struct-G Structural Only Pretrain", GNNFactory.initialize_structg),
-            ("GraphSAGE", GNNFactory.initialize_graphsage),
-            ("GAT", GNNFactory.initialize_gat),
+            ("GNN", ModelFactory.initialize_gcn),
+            ("Deep GCN", ModelFactory.initialize_deep_gcn),
+            ("GPT-GNN", ModelFactory.initialize_gpt_gnn),
+            ("Struct-G Structural Only Pretrain", ModelFactory.initialize_structg),
+            ("GraphSAGE", ModelFactory.initialize_graphsage),
+            ("GAT", ModelFactory.initialize_gat),
         ]
-
-
-
-class ModelConfig:
-    """
-    Configuration class to hold all common and structural-specific
-    hyperparameters for GNN models.
-    """
-
-    def __init__(
-            self,
-            # Structural Dependencies
-            structural_encoder: Optional[StructuralInformationEncoder] = None,
-            gate_integrator: Optional[StructuralSignalIntegrator] = None,
-
-            # Dimension Parameters
-            input_dim: int = 0,  # Should be set based on data.num_features
-            num_classes: Optional[int] = None,  # Should be set based on labels.max().item() + 1
-            hidden_dim: int = 64,
-            output_dim: int = 32,
-
-            # Architecture Parameters
-            num_layers: int = 2,
-            use_gat: bool = False,  # Set to True for GAT models
-
-            # Task/Loss Parameters
-            feat_reconstruction: bool = False  # Used for pretraining objectives
-    ):
-        """
-        Initializes the model configuration.
-        """
-        self.structural_encoder = structural_encoder
-        self.gate_integrator = gate_integrator
-
-        self.input_dim = input_dim
-        self.num_classes = num_classes
-        self.hidden_dim = hidden_dim
-        self.output_dim = output_dim
-
-        self.num_layers = num_layers
-        self.use_gat = use_gat
-
-        self.feat_reconstruction = feat_reconstruction
-
-    @classmethod
-    def from_data(cls, data: Any, labels: Any, **kwargs):
-        """
-        Helper method to automatically set input_dim and num_classes from data.
-        """
-        input_dim = data.num_features
-        num_classes = labels.max().item() + 1 if labels is not None else None
-
-        return cls(input_dim=input_dim, num_classes=num_classes, **kwargs)

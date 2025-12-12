@@ -1,7 +1,7 @@
 import torch
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 
-from experiments.experiment_utils import EvaluationResult, sample_negative_edges, split_edges_for_link_prediction
+from utilities.experiment_utils import EvaluationResult, sample_negative_edges, split_edges_for_link_prediction
 from models.gat import GAT
 
 
@@ -257,7 +257,7 @@ def evaluate_link_prediction(model, data, rem_edge_list) -> EvaluationResult:
 # 6. Full Pipeline Orchestration
 # ------------------------
 def run_gat_pipeline(data, labels, heads=1, pretrain_epochs=100, finetune_epochs=30, seed=None):
-    from experiments.experiment_utils import set_global_seed
+    from utilities.experiment_utils import set_global_seed
     import time
 
     start_time = time.time()

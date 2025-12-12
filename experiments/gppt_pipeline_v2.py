@@ -363,12 +363,12 @@ def constraint_regularization(device, prompt_list):
         total_constraint = 0
         for p in prompt_list:
             total_constraint += torch.norm(
-                torch.mm(p, p.T) - torch.eye(p.shape[0]).to(device)
+                torch.mm(p, p.transforms) - torch.eye(p.shape[0]).to(device)
             )
         return total_constraint / len(prompt_list)
     else:
         return torch.norm(
-            torch.mm(prompt_list, prompt_list.T)
+            torch.mm(prompt_list, prompt_list.transforms)
             - torch.eye(prompt_list.shape[0]).to(device)
         )
 

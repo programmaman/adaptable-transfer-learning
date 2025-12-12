@@ -5,7 +5,7 @@ import os
 from models.baselines import SimpleGraphSAGE, SimpleGAT, SimpleGNN
 from models.graph_bert import GraphBERTNodeWrapper
 from models.struct_g import StructuralGNN
-from pipeline import StructGPipeline, TransferLearningPipeline, DefaultPipeline  # your StructuralPipeline class
+from pipeline.pipeline import StructGPipeline, TransferLearningPipeline, DefaultPipeline  # your StructuralPipeline class
 
 
 # ------------------------------
@@ -284,7 +284,7 @@ def main():
     )
 
     # Step 4: Link Prediction fine-tuning and evaluation
-    from experiments.experiment_utils import split_edges_for_link_prediction
+    from utilities.experiment_utils import split_edges_for_link_prediction
     target_data.edge_index, rem_edge_list = split_edges_for_link_prediction(target_data.edge_index)
 
     transfer_model = default_pipeline.finetune_link_prediction(

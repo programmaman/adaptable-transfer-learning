@@ -27,10 +27,7 @@ class TaskPipeline:
         self.device = self._initialize_device(device)
         self.seed = self._initialize_seed(seed)
         self.preprocessors = preprocessors or []
-
-        # [FIX] Explicitly annotate type to allow mixed values (int seed, float time)
         self.metadata: Dict[str, Any] = {"seed": self.seed}
-
         self._validate_device()
         logger.info(f"Pipeline initialized | seed={self.seed} | device={self.device}")
 
@@ -91,10 +88,13 @@ class TaskPipeline:
 
             # Prepare task-specific data
             task_data = task.prepare(data).to(self.device)
+            logger.info(f"Task {task.name} data prepared.")
 
             # Train and Evaluate
             model_copy = task.train(model_copy, task_data)
+            logger.info(f"Task {task.name} training complete.")
             result = task.evaluate(model_copy, task_data)
+            logger.info(f"Task {task.name} evaluation complete.")
 
             # Update metadata
             result.metadata.update(self.metadata)

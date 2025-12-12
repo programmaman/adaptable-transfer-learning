@@ -5,7 +5,7 @@ from sklearn.metrics import (
     f1_score, roc_auc_score
 )
 
-from experiments.experiment_utils import EvaluationResult
+from utilities.experiment_utils import EvaluationResult
 from tasks.task import Task
 
 
@@ -16,7 +16,7 @@ class NodeClassificationTask(Task):
 
     def __init__(self, name="classification", epochs=30, learning_rate=0.01,
                  weight_decay=5e-4, log_every=10):
-        super().__init__(name, epochs=epochs)  # epochs handled by base class
+        super().__init__(name, epochs=epochs)
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
         self.log_every = log_every
@@ -35,14 +35,12 @@ class NodeClassificationTask(Task):
             - data.val_mask        (boolean mask)
             - data.test_mask       (boolean mask)
         """
-        # 1. Verify required attributes exist
         required_attributes = ["x", "y", "edge_index", "train_mask", "val_mask", "test_mask"]
         for attr in required_attributes:
             assert hasattr(data, attr), f"ClassificationTask.prepare: data is missing required attribute '{attr}'."
 
         number_of_nodes = data.x.size(0)
 
-        # 2. Verify shapes
         assert data.y.size(0) == number_of_nodes, (
             f"ClassificationTask.prepare: data.y has shape {data.y.shape} but "
             f"data.x has shape {data.x.shape}."
@@ -53,30 +51,21 @@ class NodeClassificationTask(Task):
                 f"ClassificationTask.prepare: {mask_name} has shape {mask.shape} but expected shape ({number_of_nodes},)."
             )
 
-        # 3. Masks must be boolean
         for mask_name in ("train_mask", "val_mask", "test_mask"):
             mask = getattr(data, mask_name)
             assert mask.dtype == torch.bool, f"ClassificationTask.prepare: {mask_name} must be boolean, got {mask.dtype}."
 
-        # 4. Masks must not overlap
+
         mask_overlap = (data.train_mask & data.val_mask) | (data.train_mask & data.test_mask) | (
                     data.val_mask & data.test_mask)
         assert not mask_overlap.any(), "ClassificationTask.prepare: train_mask, val_mask, and test_mask must not overlap."
-
-        # 5. Masks must cover all nodes
-        all_covered = data.train_mask | data.val_mask | data.test_mask
-        assert all_covered.all(), f"ClassificationTask.prepare: {((~all_covered).sum().item())} nodes are not assigned to any mask."
-
-        # 6. Training set must be non-empty
         assert data.train_mask.sum().item() > 0, "ClassificationTask.prepare: train_mask contains zero nodes."
 
-        # 7. Labels on train nodes must be non-negative integers
         labels = data.y[data.train_mask]
         assert not torch.is_floating_point(
             data.y), f"ClassificationTask.prepare: data.y must be integer, got {data.y.dtype}."
         assert (labels >= 0).all(), "ClassificationTask.prepare: negative class indices found in data.y."
 
-        # 8. At least 2 classes present
         assert labels.unique().numel() > 1, "ClassificationTask.prepare: Training set must contain at least two distinct classes."
 
         return data

@@ -1,7 +1,7 @@
 import torch
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-from experiments.experiment_utils import split_edges_for_link_prediction, sample_negative_edges
-from experiments.experiment_utils import EvaluationResult
+from utilities.experiment_utils import split_edges_for_link_prediction, sample_negative_edges
+from utilities.experiment_utils import EvaluationResult
 from models.graphsage import GraphSAGE
 from utils import get_device
 
@@ -240,7 +240,7 @@ def run_graphsage_pipeline(data, labels,
     Orchestrates the full GraphSAGE workflow using modular steps.
     Returns the trained classification model and test metrics.
     """
-    from experiments.experiment_utils import set_global_seed
+    from utilities.experiment_utils import set_global_seed
     import time
 
     start_time = time.time()

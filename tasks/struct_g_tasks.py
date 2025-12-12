@@ -1,6 +1,6 @@
 # tasks/structg_tasks.py
 import logging
-from experiments.experiment_utils import EvaluationResult, sample_negative_edges
+from utilities.experiment_utils import EvaluationResult, sample_negative_edges
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, average_precision_score
 
 from tasks.task import Task
@@ -187,7 +187,7 @@ class LinkPredictionTask(Task):
             embeddings = model(data.x, data.edge_index, node_indices)
             loss = model.link_prediction_loss(
                 embeddings,
-                self.rem_edge_list[0][0].T,  # Assuming this is the set of positive training edges
+                self.rem_edge_list[0][0].transforms,  # Assuming this is the set of positive training edges
                 neg_sample_size=self.neg_sample_size
             )
             loss.backward()
@@ -207,7 +207,7 @@ class LinkPredictionTask(Task):
             n2v_emb = model.node2vec_layer(node_indices)  # Accesses the precomputed/learned N2V embeddings
 
         # We assume the evaluation uses rem_edge_list[1] or similar
-        pos_edges = self.rem_edge_list[1][0].T.contiguous()  # Using a different split for eval
+        pos_edges = self.rem_edge_list[1][0].transforms.contiguous()  # Using a different split for eval
 
         # Ensure pos_edges are on the correct device
         pos_edges = pos_edges.to(data.edge_index.device)

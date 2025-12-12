@@ -141,7 +141,7 @@ def load_twitch_dataset(prefix, label_col="mature"):
 def load_deezer_europe_dataset(edge_path, features_path, target_path):
     # --- Load edges ---
     edges_df = pd.read_csv(edge_path)
-    edge_index = torch.tensor(edges_df[['node_1', 'node_2']].values.T, dtype=torch.long)
+    edge_index = torch.tensor(edges_df[['node_1', 'node_2']].values.transforms, dtype=torch.long)
 
     # --- Load features ---
     with open(features_path, 'r') as f:

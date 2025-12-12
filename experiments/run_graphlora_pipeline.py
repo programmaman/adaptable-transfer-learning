@@ -5,9 +5,9 @@ import torch
 from yaml import SafeLoader
 
 from experiments.graph_lora import save_results_to_excel
-from experiments.pipeline import GraphLoRAPipeline
+from pipeline.pipeline import GraphLoRAPipeline
 
-from experiments.experiment_utils import (
+from utilities.experiment_utils import (
     generate_synthetic_graph,
     load_musae_facebook_dataset,
     load_email_eu_core_dataset,

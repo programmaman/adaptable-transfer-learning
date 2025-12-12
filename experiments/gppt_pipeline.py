@@ -4,7 +4,7 @@ Run Prompt‑SAGE (DGL implementation) inside the PyG‑based experiment framewo
 """
 
 from __future__ import annotations
-import gc, random, time
+import gc
 from typing import Tuple, Optional
 
 import torch
@@ -15,7 +15,7 @@ from sklearn.metrics import (
     roc_auc_score, average_precision_score
 )
 
-from experiments.experiment_utils import (
+from utilities.experiment_utils import (
     EvaluationResult,
     sample_negative_edges,
     split_edges_for_link_prediction,
