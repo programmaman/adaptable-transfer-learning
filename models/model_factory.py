@@ -74,3 +74,56 @@ class GNNFactory:
             ("GraphSAGE", GNNFactory.initialize_graphsage),
             ("GAT", GNNFactory.initialize_gat),
         ]
+
+
+
+class ModelConfig:
+    """
+    Configuration class to hold all common and structural-specific
+    hyperparameters for GNN models.
+    """
+
+    def __init__(
+            self,
+            # Structural Dependencies
+            structural_encoder: Optional[StructuralInformationEncoder] = None,
+            gate_integrator: Optional[StructuralSignalIntegrator] = None,
+
+            # Dimension Parameters
+            input_dim: int = 0,  # Should be set based on data.num_features
+            num_classes: Optional[int] = None,  # Should be set based on labels.max().item() + 1
+            hidden_dim: int = 64,
+            output_dim: int = 32,
+
+            # Architecture Parameters
+            num_layers: int = 2,
+            use_gat: bool = False,  # Set to True for GAT models
+
+            # Task/Loss Parameters
+            feat_reconstruction: bool = False  # Used for pretraining objectives
+    ):
+        """
+        Initializes the model configuration.
+        """
+        self.structural_encoder = structural_encoder
+        self.gate_integrator = gate_integrator
+
+        self.input_dim = input_dim
+        self.num_classes = num_classes
+        self.hidden_dim = hidden_dim
+        self.output_dim = output_dim
+
+        self.num_layers = num_layers
+        self.use_gat = use_gat
+
+        self.feat_reconstruction = feat_reconstruction
+
+    @classmethod
+    def from_data(cls, data: Any, labels: Any, **kwargs):
+        """
+        Helper method to automatically set input_dim and num_classes from data.
+        """
+        input_dim = data.num_features
+        num_classes = labels.max().item() + 1 if labels is not None else None
+
+        return cls(input_dim=input_dim, num_classes=num_classes, **kwargs)
