@@ -3,5 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="Python 3.12.3 WSL (Ubuntu): (/home/alec/.virtualenvs/adaptable-transfer-learning/bin/python)" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="Remote 3.12 Docker (sha256:e2624446d5a4950c1fd5216731a39ff40cfb989346a7dbc618c6fe024cb7615a)" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="Remote Python 3.10.14 Docker (sha256:75f636a52f79dcc9637c0307b0827189be703cf5c1deb8897c601abbe2e457ba)" project-jdk-type="Python SDK" />
 </project>

@@ -33,7 +33,7 @@ class StructuralGNN(nn.Module):
         # 1. Structural Injection & Gating
         # ------------------------------------------------------------------
         self.structural_encoder = structural_encoder
-        struct_dim = self.structural_encoder.embedding_dim
+        struct_dim = self.structural_encoder.embedding_dimension
 
         # If no specific integrator is provided, default to the SimpleFeatureGate
         # with Concatenation fusion (mimics previous behavior).
@@ -41,7 +41,7 @@ class StructuralGNN(nn.Module):
             self.gate_integrator = SimpleFeatureGate(
                 feature_dimension=input_dim,
                 structural_dimension=struct_dim,
-                hidden_dimension=hidden_dim,
+                calculation_dimension=hidden_dim,
                 fusion_type=FusionType.CONCAT
             )
         else:

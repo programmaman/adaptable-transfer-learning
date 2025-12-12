@@ -2,7 +2,7 @@
 <module type="PYTHON_MODULE" version="4">
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$" />
-    <orderEntry type="jdk" jdkName="Remote 3.12 Docker (sha256:e2624446d5a4950c1fd5216731a39ff40cfb989346a7dbc618c6fe024cb7615a)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="Remote Python 3.10.14 Docker (sha256:75f636a52f79dcc9637c0307b0827189be703cf5c1deb8897c601abbe2e457ba)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
   <component name="PackageRequirementsSettings">
