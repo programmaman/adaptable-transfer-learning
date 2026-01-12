@@ -71,6 +71,7 @@ class ModelFactory:
 
             def forward(self, x, edge_index):
                 x = self.gcn(x, edge_index)
+                x = x.unsqueeze(-1)  # Reshape [num_nodes] to [num_nodes, 1]
                 x = self.head(x)
                 return x
 
