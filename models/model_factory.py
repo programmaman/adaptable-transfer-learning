@@ -20,14 +20,63 @@ class ModelFactory:
 
     @staticmethod
     def initialize_gcn(data: Any, labels: Any) -> nn.Module:
-        """Initializes a generic GNN model (e.g.,  GCN)."""
-        raise NotImplementedError("GNN model initialization is not implemented.")
+        """Initializes a GCN model."""
+        from models.gcn import GCN
+
+        if hasattr(data, 'num_features'):
+            in_dim = data.num_features
+        elif hasattr(data, 'x') and hasattr(data.x, 'shape'):
+            in_dim = data.x.shape[-1]
+        else:
+            raise ValueError("Cannot determine input dimension (in_dim) from data.")
+
+        if hasattr(labels, 'num_classes'):
+            num_classes = labels.num_classes
+        elif isinstance(labels, torch.Tensor):
+            num_classes = len(torch.unique(labels))
+        else:
+            raise ValueError("Cannot determine number of classes (num_classes) from labels.")
+
+        base_model = GCN(in_channels=in_dim, out_channels=num_classes)
+        return base_model
 
     @staticmethod
-    #TODO Replace with multi-layer gcn argument
     def initialize_deep_gcn(data: Any, labels: Any) -> nn.Module:
         """Initializes a Deep GCN model."""
-        raise NotImplementedError("Deep GCN model initialization is not implemented.")
+        from models.deep_gcn import ThreeLayerGCN
+
+        if hasattr(data, 'num_features'):
+            in_dim = data.num_features
+        elif hasattr(data, 'x') and hasattr(data.x, 'shape'):
+            in_dim = data.x.shape[-1]
+        else:
+            raise ValueError("Cannot determine input dimension (in_dim) from data.")
+
+        if hasattr(labels, 'num_classes'):
+            num_classes = labels.num_classes
+        elif isinstance(labels, torch.Tensor):
+            num_classes = len(torch.unique(labels))
+        else:
+            raise ValueError("Cannot determine number of classes (num_classes) from labels.")
+
+        hidden_channels = max(64, in_dim * 2)
+        mid_channels = max(32, in_dim)
+
+        class DeepGCNWithHead(nn.Module):
+            def __init__(self, in_channels, hidden_channels, mid_channels, num_classes):
+                super().__init__()
+                self.gcn = ThreeLayerGCN(in_channels=in_channels, hidden_channels=hidden_channels,
+                                         mid_channels=mid_channels)
+                self.head = nn.Linear(1, num_classes)
+
+            def forward(self, x, edge_index):
+                x = self.gcn(x, edge_index)
+                x = self.head(x)
+                return x
+
+        base_model = DeepGCNWithHead(in_channels=in_dim, hidden_channels=hidden_channels, mid_channels=mid_channels,
+                                     num_classes=num_classes)
+        return base_model
 
     @staticmethod
     def initialize_gpt_gnn(data: Any, labels: Any) -> nn.Module:
@@ -98,7 +147,6 @@ class ModelFactory:
         the setup function call with their distinct pipeline names.
         """
         return [
-            # I use initialize_gnn here to match the pipeline name "GNN"
             ("GNN", ModelFactory.initialize_gcn),
             ("Deep GCN", ModelFactory.initialize_deep_gcn),
             ("GPT-GNN", ModelFactory.initialize_gpt_gnn),

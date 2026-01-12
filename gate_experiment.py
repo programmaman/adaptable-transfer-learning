@@ -177,7 +177,7 @@ def run_experiment():
         data, labels = generate_synthetic_graph()
         data.y = labels
         num_classes = labels.max().item() + 1
-        pipeline = TaskPipeline(seed=42 + i, device='cpu')
+        pipeline = TaskPipeline(seed=42 + i, device='cuda')
 
         # 1. Standard
         model_std = build_model(data, num_classes, "Standard")

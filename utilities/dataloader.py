@@ -116,8 +116,10 @@ def generate_synthetic_graph(
     labels = torch.tensor(kmeans.labels_, dtype=torch.long)
     data.y = labels
 
+    data = _ensure_masks(data)
     print(f"[Synthetic] {num_nodes} nodes | {num_edges} edges | {feature_dim} features | {num_classes} classes")
     return data, labels, {"source": "synthetic"}
+
 
 
 # ----------------------------------------------------------------------
@@ -125,7 +127,7 @@ def generate_synthetic_graph(
 # ----------------------------------------------------------------------
 def load_deezer_europe(edge_path, features_path, target_path):
     edges_df = pd.read_csv(edge_path)
-    edge_index = torch.tensor(edges_df[["node_1", "node_2"]].values.transforms, dtype=torch.long)
+    edge_index = torch.tensor(edges_df[["node_1", "node_2"]].values.T, dtype=torch.long)
 
     with open(features_path, "r") as f:
         features_dict = json.load(f)
@@ -145,8 +147,11 @@ def load_deezer_europe(edge_path, features_path, target_path):
     labels = torch.full((num_nodes,), -1, dtype=torch.long)
     labels[target_df["mapped_id"]] = torch.tensor(target_df["target"].values)
 
-    data = Data(x=x, edge_index=edge_index)
+    data = Data(x=x, edge_index=edge_index, y=labels)
+    data = _ensure_masks(data)
     return data, labels, {"source": "deezer_europe"}
+
+
 
 
 # ----------------------------------------------------------------------
@@ -166,9 +171,11 @@ def load_twitch_gamers(edge_path, meta_path, use_metadata_as_features=True):
     labels = torch.tensor(meta_df["mature"].astype(int).values, dtype=torch.long)
 
     edge_df = pd.read_csv(edge_path)
-    edge_index = torch.tensor(edge_df[["numeric_id_1", "numeric_id_2"]].values.transforms, dtype=torch.long)
-    data = Data(x=x, edge_index=edge_index)
+    edge_index = torch.tensor(edge_df[["numeric_id_1", "numeric_id_2"]].values.T, dtype=torch.long)
+    data = Data(x=x, edge_index=edge_index, y=labels)
+    data = _ensure_masks(data)
     return data, labels, {"source": "twitch_gamers"}
+
 
 
 # ----------------------------------------------------------------------
@@ -206,8 +213,10 @@ def _load_musae(edge_path, features_path, target_path, label_col):
     ]
     edge_index = torch.tensor(filtered_edges, dtype=torch.long).t().contiguous()
 
-    data = Data(x=x, edge_index=edge_index)
+    data = Data(x=x, edge_index=edge_index, y=labels)
+    data = _ensure_masks(data)
     return data, labels, {"encoder": le, "source": f"musae_{label_col}"}
+
 
 
 def load_musae_facebook(edge, features, target):
@@ -229,8 +238,10 @@ def load_email_eu_core(edge_path, label_path):
     x = torch.eye(num_nodes)
     labels = torch.full((num_nodes,), -1, dtype=torch.long)
     labels[label_df["node_id"]] = torch.tensor(label_df["label"].values)
-    data = Data(x=x, edge_index=edge_index)
+    data = Data(x=x, edge_index=edge_index, y=labels)
+    data = _ensure_masks(data)
     return data, labels, {"source": "email_eu_core"}
+
 
 
 # ----------------------------------------------------------------------
@@ -247,6 +258,8 @@ def load_dataset(name: str, root: str = "./datasets", **kwargs):
     if name in ["cora", "citeseer", "pubmed", "computers", "photo"]:
         return load_pyg_dataset(name, root)
     elif name == "deezer-europe":
+        # log arguments for debugging
+        print(f"Loading Deezer Europe with arguments: {kwargs}")
         return load_deezer_europe(**kwargs)
     elif name == "twitch-gamers":
         return load_twitch_gamers(**kwargs)
