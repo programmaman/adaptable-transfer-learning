@@ -82,7 +82,66 @@ class ModelFactory:
     @staticmethod
     def initialize_gpt_gnn(data: Any, labels: Any) -> nn.Module:
         """Initializes a GPT-GNN model."""
-        raise NotImplementedError("GPT-GNN model initialization is not implemented.")
+        from models.gpt_gnn import GPT_GNN, GNN
+
+        if hasattr(data, "num_features"):
+            in_dim = data.num_features
+        elif hasattr(data, "x") and hasattr(data.x, "shape"):
+            in_dim = data.x.shape[-1]
+        else:
+            raise ValueError("Cannot determine input dimension (in_dim) from data.")
+
+        if hasattr(labels, "num_classes"):
+            num_classes = labels.num_classes
+        elif isinstance(labels, torch.Tensor):
+            num_classes = len(torch.unique(labels))
+        else:
+            raise ValueError("Cannot determine number of classes (num_classes) from labels.")
+
+        n_hid = 64
+        num_types = 1
+        num_relations = 1
+        n_heads = 4
+        n_layers = 2
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        gnn = GNN(
+            in_dim=in_dim,
+            n_hid=n_hid,
+            num_types=num_types,
+            num_relations=num_relations,
+            n_heads=n_heads,
+            n_layers=n_layers,
+            dropout=0.2,
+            conv_name="hgt",
+        )
+
+        gpt_gnn = GPT_GNN(
+            gnn=gnn,
+            rem_edge_list={},
+            attr_decoder=None,
+            types=list(range(num_types)),
+            neg_samp_num=5,
+            device=device,
+        )
+
+        class GPT_GNN_Adapter(nn.Module):
+            def __init__(self, gpt_gnn_model: nn.Module, num_classes: int):
+                super().__init__()
+                self.gpt_gnn = gpt_gnn_model
+                self.classifier = nn.Linear(n_hid, num_classes)
+
+            def forward(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:
+                dev = x.device
+                edge_time = torch.zeros(edge_index.shape[1], dtype=torch.long, device=dev)
+                edge_type = torch.zeros(edge_index.shape[1], dtype=torch.long, device=dev)
+                node_type = torch.zeros(x.shape[0], dtype=torch.long, device=dev)
+
+                # Correct argument order: (node_feature, node_type, edge_time, edge_index, edge_type)
+                gnn_out = self.gpt_gnn.gnn(x, node_type, edge_time, edge_index, edge_type)
+                return self.classifier(gnn_out)
+
+        return GPT_GNN_Adapter(gpt_gnn, num_classes)
 
     @staticmethod
     def initialize_structg(data: Any, labels: Any) -> nn.Module:

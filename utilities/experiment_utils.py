@@ -40,6 +40,129 @@ def generate_synthetic_graph(num_nodes=10000, num_edges=15000, feature_dim=16):
 
     return data, labels
 
+def generate_synthetic_graph_with_structure(
+    num_nodes=2000,
+    num_blocks=2,
+    p_in=0.02,
+    p_out=0.002,
+    feature_dim=16,
+):
+    """
+    Generate a stochastic block model graph where:
+    - Node features are pure noise
+    - Labels = block id (purely structural)
+    """
+
+    assert num_nodes % num_blocks == 0
+    block_size = num_nodes // num_blocks
+
+    sizes = [block_size] * num_blocks
+
+    probs = []
+    for i in range(num_blocks):
+        row = []
+        for j in range(num_blocks):
+            if i == j:
+                row.append(p_in)
+            else:
+                row.append(p_out)
+        probs.append(row)
+
+    # Generate SBM graph
+    G = nx.stochastic_block_model(sizes, probs, seed=None)
+
+    # Get edges
+    edges = list(G.edges())
+    edge_index = torch.tensor(edges, dtype=torch.long).t().contiguous()
+
+    # Make undirected
+    edge_index = torch.cat([edge_index, edge_index.flip(0)], dim=1)
+
+    # Node features = pure noise
+    x = torch.randn((num_nodes, feature_dim))
+
+    # Labels = block id
+    labels = torch.zeros(num_nodes, dtype=torch.long)
+    for b in range(num_blocks):
+        start = b * block_size
+        end = (b + 1) * block_size
+        labels[start:end] = b
+
+    data = Data(x=x, edge_index=edge_index, num_nodes=num_nodes)
+
+    # Train/test split
+    perm = torch.randperm(num_nodes)
+    split = int(0.8 * num_nodes)
+    data.train_mask = torch.zeros(num_nodes, dtype=torch.bool)
+    data.test_mask = torch.zeros(num_nodes, dtype=torch.bool)
+    data.train_mask[perm[:split]] = True
+    data.test_mask[perm[split:]] = True
+
+    print(
+        f"SBM graph | nodes={num_nodes} | edges={edge_index.size(1)} | blocks={num_blocks}"
+    )
+
+    return data, labels
+
+import torch
+import networkx as nx
+from torch_geometric.data import Data
+
+
+def generate_role_graph(
+    num_nodes=3000,
+    num_edges=12000,
+    feature_dim=16,
+    num_bins=5,
+):
+    """
+    Role classification task:
+    - Graph is random
+    - Node features are noise
+    - Labels = binned node degree (structural role)
+    """
+
+    # Generate random graph
+    G = nx.gnm_random_graph(num_nodes, num_edges)
+
+    # Make sure graph is connected enough
+    if not nx.is_connected(G):
+        G = max((G.subgraph(c) for c in nx.connected_components(G)), key=len)
+        G = nx.convert_node_labels_to_integers(G)
+
+    num_nodes = G.number_of_nodes()
+
+    # Compute degrees
+    degrees = torch.tensor([G.degree(i) for i in range(num_nodes)], dtype=torch.float)
+
+    # Bin degrees into roles
+    bins = torch.quantile(degrees, torch.linspace(0, 1, num_bins + 1))
+    labels = torch.bucketize(degrees, bins[1:-1], right=False)
+
+    # Node features = noise
+    x = torch.randn((num_nodes, feature_dim))
+
+    # Build edge_index
+    edges = list(G.edges())
+    edge_index = torch.tensor(edges, dtype=torch.long).t().contiguous()
+    edge_index = torch.cat([edge_index, edge_index.flip(0)], dim=1)
+
+    data = Data(x=x, edge_index=edge_index, num_nodes=num_nodes)
+
+    # Train/test split
+    perm = torch.randperm(num_nodes)
+    split = int(0.8 * num_nodes)
+    data.train_mask = torch.zeros(num_nodes, dtype=torch.bool)
+    data.test_mask = torch.zeros(num_nodes, dtype=torch.bool)
+    data.train_mask[perm[:split]] = True
+    data.test_mask[perm[split:]] = True
+
+    print(
+        f"Role graph | nodes={num_nodes} | edges={edge_index.size(1)} | bins={num_bins}"
+    )
+
+    return data, labels
+
 
 def generate_task_labels(data, num_classes=5):
     # Generate semi-structured labels based on node features
