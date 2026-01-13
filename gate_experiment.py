@@ -7,7 +7,7 @@ from torch.optim import Adam
 from torch_geometric.nn import GCNConv
 
 # Encoders
-from encoders.node2vec_encoder import (
+from encoders.structural_encoder import (
     Node2VecEncoder,
     RandomStructuralEncoder,
     LaplacianStructuralEncoder,
