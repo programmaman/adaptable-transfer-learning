@@ -61,7 +61,7 @@ class DegreeStructuralEncoder(nn.Module):
 
 
 class LaplacianStructuralEncoder(nn.Module):
-    def __init__(self, edge_index, num_nodes, dim=16):
+    def __init__(self, edge_index, num_nodes, dim=8):
         super().__init__()
 
         # Build scipy sparse adjacency
@@ -76,19 +76,31 @@ class LaplacianStructuralEncoder(nn.Module):
         I = sp.eye(num_nodes)
         L = I - D_inv_sqrt @ A @ D_inv_sqrt
 
-        # Compute smallest eigenvectors
-        # Skip the first trivial eigenvector
+        # Try to compute eigenvectors robustly
         k = dim + 1
-        eigvals, eigvecs = sp.linalg.eigsh(L, k=k, which="SM")
+        success = False
 
-        # Take non-trivial ones
-        pe = torch.from_numpy(eigvecs[:, 1 : dim + 1]).float()
+        while not success and k >= 2:
+            try:
+                eigvals, eigvecs = sp.linalg.eigsh(L, k=k, which="SM", tol=1e-2)
+                success = True
+            except Exception as e:
+                print(f"[LaplacianPE] eigsh failed for k={k}, retrying with k={k-1}")
+                k = k - 1
+
+        if not success:
+            raise RuntimeError("Laplacian eigendecomposition failed completely.")
+
+        # Take non-trivial ones (skip first eigenvector)
+        usable_dim = min(dim, eigvecs.shape[1] - 1)
+        pe = torch.from_numpy(eigvecs[:, 1 : 1 + usable_dim]).float()
 
         self.register_buffer("pe", pe)
         self.embedding_dimension = pe.size(1)
 
     def forward(self, nodes):
         return self.pe[nodes]
+
 
 
 class Node2VecEncoder(StructuralInformationEncoder):

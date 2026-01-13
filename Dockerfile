@@ -19,4 +19,4 @@ COPY /experiments/config.yaml /app/config.yaml
 
 ENV PYTHONPATH="/app"
 
-CMD ["python", "gate_experiment.py"]
+CMD ["python", "real_gating_ablation.py"]

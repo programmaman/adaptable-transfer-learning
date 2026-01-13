@@ -657,3 +657,91 @@ class ResidualAdaptiveGate(Gate):
         updated_node_features = node_features.clone()
         updated_node_features[node_indices] = updated_subset
         return updated_node_features, None
+
+
+class AdaptiveGateWithSparsity(Gate):
+    """
+    Adaptive gate with sparsity regularization on alpha to encourage
+    ignoring structure unless it is truly useful.
+    """
+
+    def __init__(
+        self,
+        feature_dimension: int,
+        structural_dimension: int,
+        calculation_dimension: int,
+        initial_feature_dimension: int = None,
+        lambda_sparse: float = 1e-3,   # <<< NEW
+    ):
+        super().__init__(feature_dimension, structural_dimension, calculation_dimension)
+
+        self.lambda_sparse = lambda_sparse
+
+        if initial_feature_dimension is None:
+            initial_feature_dimension = feature_dimension
+
+        self.initial_projection = nn.Linear(initial_feature_dimension, calculation_dimension)
+
+        self.alpha_W1 = nn.Linear(calculation_dimension * 2, calculation_dimension)
+        self.alpha_layernorm = nn.LayerNorm(calculation_dimension)
+        self.alpha_v2 = nn.Linear(calculation_dimension, 1)
+
+        self.beta_vres = nn.Linear(calculation_dimension, 1)
+
+        if calculation_dimension != feature_dimension:
+            self.output_projection = nn.Linear(calculation_dimension, feature_dimension)
+        else:
+            self.output_projection = nn.Identity()
+
+        self._reset_adaptive_parameters()
+
+    def _reset_adaptive_parameters(self):
+        nn.init.uniform_(self.alpha_v2.weight, -0.01, 0.01)
+        nn.init.constant_(self.alpha_v2.bias, 0.0)
+        nn.init.uniform_(self.beta_vres.weight, -0.01, 0.01)
+        nn.init.constant_(self.beta_vres.bias, 0.0)
+
+    def integrate(self, node_features, structural_encodings, edge_indices, node_indices=None, initial_features=None):
+
+        if node_indices is None:
+            node_indices = torch.arange(node_features.size(0), device=node_features.device)
+
+        feature_subset = node_features[node_indices]
+        structure_subset = structural_encodings[node_indices]
+
+        if initial_features is not None:
+            initial_subset = initial_features[node_indices]
+        else:
+            initial_subset = torch.zeros_like(feature_subset)
+
+        # Project to latent
+        feature_latent = self.feature_projection(feature_subset)
+        structural_latent = self.structural_projection(structure_subset)
+        initial_latent = self.initial_projection(initial_subset)
+
+        # Alpha gate
+        concat_features = torch.cat([structural_latent, feature_latent], dim=-1)
+        alpha_hidden = self.alpha_layernorm(self.alpha_W1(concat_features))
+        alpha_hidden = torch.relu(alpha_hidden)
+        alpha = torch.sigmoid(self.alpha_v2(alpha_hidden))  # [B, 1]
+
+        # Beta gate
+        beta = torch.sigmoid(self.beta_vres(initial_latent))  # [B, 1]
+
+        # Fusion
+        fused_latent = (
+            alpha * structural_latent
+            + (1.0 - alpha) * feature_latent
+            + beta * initial_latent
+        )
+
+        fused_feat = self.output_projection(fused_latent)
+
+        updated_node_features = node_features.clone()
+        updated_node_features[node_indices] = fused_feat
+
+        # ----------- NEW: sparsity regularization -----------
+        # Penalize using structure unless necessary
+        sparsity_loss = self.lambda_sparse * alpha.mean()
+
+        return updated_node_features, sparsity_loss
