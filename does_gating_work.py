@@ -8,6 +8,18 @@ import numpy as np
 from torch.optim import Adam
 from torch_geometric.nn import GCNConv
 
+
+"""
+This script runs a comprehensive experiment to evaluate various structural encoders and gating mechanisms on both synthetic and real graph datasets.
+Experiment 1: Verify that gating mechanisms can improve performance on synthetic datasets with known structural patterns.
+Experiment 2: Evaluate the same gating mechanisms on real-world datasets to see if the benefits translate
+to practical scenarios.
+Experiment 3: Analyze which combinations of encoders and gates work best for different types of graphs (e.g., homophilous vs. heterophilous).
+Experiment 4: Ablation studies to understand the contribution of each component (encoder, gate) to the overall performance.
+"""
+
+from utilities.dataloader import load_dataset
+
 # ----------------------------
 # Device & Repro
 # ----------------------------
@@ -63,8 +75,9 @@ class StructuralGCN(nn.Module):
         self.structural_encoder = structural_encoder
         self.gate = gate
 
+        # Single GCN layer
         self.conv1 = GCNConv(feature_dim, hidden_dim)
-        self.conv2 = GCNConv(hidden_dim, hidden_dim)
+
         self.classifier = nn.Linear(hidden_dim, num_classes)
 
         self.cached_struct_emb = None
@@ -72,15 +85,19 @@ class StructuralGCN(nn.Module):
     def forward(self, x, edge_index):
         aux_loss = None
 
-        # GNN
+        # ----------------
+        # 1-layer GNN
+        # ----------------
         h = self.conv1(x, edge_index)
         h = F.relu(h)
         h = F.dropout(h, p=0.5, training=self.training)
-        h = self.conv2(h, edge_index)
 
-        h0 = h.clone()  # for residual gates
+        # Save pre-gate features for residual / initial-feature gates
+        h0 = h.clone()
 
+        # ----------------
         # Structural fusion
+        # ----------------
         if self.gate is not None and self.structural_encoder is not None:
 
             if self.cached_struct_emb is None:
@@ -95,8 +112,12 @@ class StructuralGCN(nn.Module):
             else:
                 h, aux_loss = self.gate.integrate(h, struct_emb, edge_index)
 
+        # ----------------
+        # Classifier
+        # ----------------
         logits = self.classifier(h)
         return logits, aux_loss
+
 
 # --------------------------------------------------------------------------
 # Builders
@@ -217,7 +238,7 @@ def train_and_eval(model, data, epochs=150, lr=0.01):
         loss = F.cross_entropy(logits[data.train_mask], data.y[data.train_mask])
 
         if aux_loss is not None:
-            loss = loss + aux_loss.mean()
+            loss = loss + 0.1 * aux_loss.mean()
 
         loss.backward()
         optimizer.step()
@@ -234,49 +255,77 @@ def train_and_eval(model, data, epochs=150, lr=0.01):
 # Dataset factory
 # --------------------------------------------------------------------------
 
-def generate_dataset(name):
+def load_experiment_dataset(name):
+    name = name.lower()
+
+    # -----------------------
+    # Synthetic datasets
+    # -----------------------
     if name == "random":
-        data, labels = generate_synthetic_graph()
+        data, labels, _ = load_dataset("synthetic")
     elif name == "sbm":
         data, labels = generate_synthetic_graph_with_structure()
     elif name == "role":
         data, labels = generate_role_graph()
+
+    # -----------------------
+    # Real datasets
+    # -----------------------
+    elif name in ["cora", "computers", "musae-facebook"]:
+        if name == "musae-facebook":
+            data, labels, _ = load_dataset(
+                "musae-facebook",
+                edge="./datasets/facebook_large/musae_facebook_edges.csv",
+                features="./datasets/facebook_large/musae_facebook_features.json",
+                target="./datasets/facebook_large/musae_facebook_target.csv",
+            )
+        else:
+            data, labels, _ = load_dataset(name)
+
     else:
-        raise ValueError(name)
+        raise ValueError(f"Unknown dataset: {name}")
+
 
     data.y = labels
 
-    N = data.num_nodes
-    perm = torch.randperm(N)
-    split = int(0.8 * N)
-    data.train_mask = torch.zeros(N, dtype=torch.bool)
-    data.test_mask = torch.zeros(N, dtype=torch.bool)
-    data.train_mask[perm[:split]] = True
-    data.test_mask[perm[split:]] = True
+    # For synthetic graphs: create random split
+    if name in ["random", "sbm", "role"]:
+        N = data.num_nodes
+        perm = torch.randperm(N)
+        split = int(0.8 * N)
+        data.train_mask = torch.zeros(N, dtype=torch.bool)
+        data.test_mask = torch.zeros(N, dtype=torch.bool)
+        data.train_mask[perm[:split]] = True
+        data.test_mask[perm[split:]] = True
 
+    # For real datasets: masks already exist, do nothing
     return data, labels
+
 
 # --------------------------------------------------------------------------
 # Experiment
 # --------------------------------------------------------------------------
 
 def run_experiment():
-    logger.info("Running FULL synthetic grid experiment")
+    logger.info("Running FULL gating experiment (synthetic + real)")
 
+    rows = []
+
+    # ============================================================
+    # Part 1: Synthetic experiments (full grid, as before)
+    # ============================================================
     graph_types = ["random", "sbm", "role"]
     encoder_types = ["none", "random", "laplacian", "degree", "node2vec"]
     fusion_types = ["Standard", "Simple", "SSL", "Adaptive", "AdaptiveResidual", "Combined", "AdaptiveGatingWithSparsity"]
-
-    rows = []
 
     for graph_name in graph_types:
         for run in range(3):
             seed = 42 + run
             set_seed(seed)
 
-            logger.info(f"\nGraph={graph_name} | Run={run+1} | Seed={seed}")
+            logger.info(f"\n[SYNTH] Graph={graph_name} | Run={run+1} | Seed={seed}")
 
-            data, labels = generate_dataset(graph_name)
+            data, labels = load_experiment_dataset(graph_name)
             data = data.to(DEVICE)
             num_classes = labels.max().item() + 1
 
@@ -289,12 +338,13 @@ def run_experiment():
                     if fusion_type == "Standard" and encoder_type != "none":
                         continue
 
-                    logger.info(f"  Encoder={encoder_type} | Fusion={fusion_type}")
+                    logger.info(f"  [SYNTH] Encoder={encoder_type} | Fusion={fusion_type}")
 
                     model = build_model(data, num_classes, encoder_type, fusion_type)
                     acc = train_and_eval(model, data, epochs=150)
 
                     rows.append({
+                        "domain": "synthetic",
                         "graph": graph_name,
                         "run": run + 1,
                         "encoder": encoder_type,
@@ -302,21 +352,69 @@ def run_experiment():
                         "accuracy": acc,
                     })
 
+    # ============================================================
+    # Part 2: Real experiments (small, focused grid)
+    # ============================================================
+    real_datasets = ["cora", "computers", "musae-facebook"]
+    real_encoders = ["none", "degree", "laplacian"]
+    real_fusions = ["Standard", "Simple", "Adaptive", "SSL"]
+
+    for graph_name in real_datasets:
+        for run in range(3):
+            seed = 100 + run
+            set_seed(seed)
+
+            logger.info(f"\n[REAL] Dataset={graph_name} | Run={run+1} | Seed={seed}")
+
+            data, labels = load_experiment_dataset(graph_name)
+            data = data.to(DEVICE)
+
+            # Some datasets may have -1 labels (unlabeled nodes)
+            valid = labels >= 0
+            num_classes = labels[valid].max().item() + 1
+
+            for encoder_type in real_encoders:
+                for fusion_type in real_fusions:
+
+                    # Skip meaningless combos
+                    if fusion_type != "Standard" and encoder_type == "none":
+                        continue
+                    if fusion_type == "Standard" and encoder_type != "none":
+                        continue
+
+                    logger.info(f"  [REAL] Encoder={encoder_type} | Fusion={fusion_type}")
+
+                    model = build_model(data, num_classes, encoder_type, fusion_type)
+                    acc = train_and_eval(model, data, epochs=200)  # a bit longer for real data
+
+                    rows.append({
+                        "domain": "real",
+                        "graph": graph_name,
+                        "run": run + 1,
+                        "encoder": encoder_type,
+                        "fusion": fusion_type,
+                        "accuracy": acc,
+                    })
+
+    # ============================================================
+    # Save results
+    # ============================================================
     df = pd.DataFrame(rows)
-    df.to_csv("synthetic_gating_results.csv", index=False)
+    df.to_csv("results/gating_results_all.csv", index=False)
 
     print("\n" + "=" * 80)
     print("RAW RESULTS")
     print(df)
     print("=" * 80)
 
-    summary = df.groupby(["graph", "encoder", "fusion"])["accuracy"].agg(["mean", "std"]).reset_index()
-    summary.to_csv("results/synthetic_gating_summary.csv", index=False)
+    summary = df.groupby(["domain", "graph", "encoder", "fusion"])["accuracy"].agg(["mean", "std"]).reset_index()
+    summary.to_csv("results/gating_results_summary.csv", index=False)
 
     print("\n" + "=" * 80)
     print("SUMMARY (mean ± std)")
     print(summary)
     print("=" * 80)
+
 
 
 if __name__ == "__main__":
