@@ -316,346 +316,79 @@ class AdaptiveGate(Gate):
         nn.init.uniform_(self.beta_vres.weight, -0.01, 0.01)
         nn.init.constant_(self.beta_vres.bias, 0.0)
 
+    """
+    Implements the Adaptive Gated Integration layer of AG-GNN
+    (Begga et al., Information Sciences 2026, Section 4.3, Eq. 11–13).
+
+    This method corresponds exactly to the paper's adaptive fusion:
+
+        H^(l) = α ⊙ H_GNN^(l) + (1 - α) ⊙ H_MLP^(l) + β ⊙ H^(0)
+
+    Where:
+      - H_GNN^(l) comes from `structural_encodings`
+      - H_MLP^(l) comes from `node_features`
+      - H^(0) comes from `initial_features`
+
+    α (alpha) is computed from concatenated [H_GNN || H_MLP] using:
+        α = sigmoid( v2 * ReLU( LayerNorm( W1 * [H_GNN || H_MLP] ) ) )
+
+    β (beta) is computed from the transformed initial features:
+        β = sigmoid( v_res * H^(0) )
+
+    This is the core AG-GNN mechanism that adaptively balances:
+      - structure-driven propagation (GCN / SAGE path),
+      - feature-driven MLP processing,
+      - and direct access to original features to avoid over-smoothing,
+    as described in Section 4.2–4.3 of the paper.
+    """
+
     def integrate(self, node_features, structural_encodings, edge_indices, node_indices=None, initial_features=None):
         """
         Args:
-            node_features: H_MLP^(l) - Features processed by the MLP pathway.
-            structural_encodings: H_GNN^(l) - Features processed by the GNN pathway.
-            edge_indices: Graph connectivity (unused in this specific gate logic, but part of signature).
-            node_indices: Indices of nodes to process.
-            initial_features: H_MLP^(0) - The transformed initial features (Required for Beta gate).
+            node_features: H_MLP^(l)
+            structural_encodings: H_GNN^(l)
+            edge_indices: unused (kept for interface consistency)
+            node_indices: optional indices of nodes to update
+            initial_features: H_MLP^(0) (recommended; if None, zeros are used)
         """
-
         if node_indices is None:
             node_indices = torch.arange(node_features.size(0), device=node_features.device)
 
-        # 1. Prepare Subsets
+        # 1) Subsets
         feature_subset = node_features[node_indices]  # H_MLP
         structure_subset = structural_encodings[node_indices]  # H_GNN
 
-        # Handle initial features (H^0). If not provided, fallback to zeros or current features
-        # (though algorithmic logic dictates H^0 should be present).
         if initial_features is not None:
-            initial_subset = initial_features[node_indices]
+            initial_subset = initial_features[node_indices]  # H^0
         else:
-            # Fallback warning or behavior if initial features are missing in the pipeline
             initial_subset = torch.zeros_like(feature_subset)
 
-            # 2. Project all inputs to the calculation latent space
-        # H_MLP^(l)
-        feature_latent = self.feature_projection(feature_subset)
-        # H_GNN^(l)
-        structural_latent = self.structural_projection(structure_subset)
-        # H_MLP^(0)
-        initial_latent = self.initial_projection(initial_subset)
+        # 2) Project to calculation latent space
+        feature_latent = self.feature_projection(feature_subset)  # [B, calc_dim]
+        structural_latent = self.structural_projection(structure_subset)  # [B, calc_dim]
+        initial_latent = self.initial_projection(initial_subset)  # [B, calc_dim]
 
-        # 3. Compute Alpha Gate (Eq. 11)
-        # Concatenate [H_GNN || H_MLP]
+        # 3) Alpha gate (AG-GNN-style)
         concat_features = torch.cat([structural_latent, feature_latent], dim=-1)
-
-        # W1 -> LayerNorm -> ReLU
         alpha_hidden = self.alpha_W1(concat_features)
         alpha_hidden = self.alpha_layernorm(alpha_hidden)
         alpha_hidden = torch.relu(alpha_hidden)
+        alpha = torch.sigmoid(self.alpha_v2(alpha_hidden))  # [B, 1]
 
-        # v2 -> Sigmoid
-        alpha_score = self.alpha_v2(alpha_hidden)
-        alpha = torch.sigmoid(alpha_score)  # Shape: [Batch, 1]
+        # 4) Beta gate (skip from H^0)
+        beta = torch.sigmoid(self.beta_vres(initial_latent))  # [B, 1]
 
-        # 4. Compute Beta Gate (Eq. 12)
-        # v_res * H_MLP^(0) -> Sigmoid
-        beta_score = self.beta_vres(initial_latent)
-        beta = torch.sigmoid(beta_score)  # Shape: [Batch, 1]
-
-        # 5. Final Integration (Eq. 13)
-        # H = alpha * H_GNN + (1 - alpha) * H_MLP + beta * H_MLP^0
+        # 5) Fuse
         fused_representation = (
-                alpha * structural_latent +
-                (1 - alpha) * feature_latent +
-                beta * initial_latent
+                alpha * structural_latent
+                + (1.0 - alpha) * feature_latent
+                + beta * initial_latent
         )
 
-        # 6. Output Projection and Assignment
         fused_representation = self.output_projection(fused_representation)
 
         updated_node_features = node_features.clone()
         updated_node_features[node_indices] = fused_representation
-
-        # Return updated features and None for aux_loss (as this gate has no aux loss)
-        return updated_node_features, None
-
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as functional
-
-class CombinedAdaptiveSelfSupervisedGate(Gate):
-    """
-    Combines the AdaptiveGate (learned alpha & beta, LayerNorm + MLP gating)
-    with the SelfSupervisedGate (neighborhood-prediction losses used as signals).
-
-    Behavior:
-      - Projects structural, feature and initial-feature inputs to a shared latent space.
-      - Computes self-supervised neighbor-feature prediction losses for structure and feature pathways.
-      - Embeds the two per-node losses and concatenates them with the latents to form the gating input.
-      - Computes learned alpha (balance between GNN and MLP) via LN -> Linear -> ReLU -> Linear -> sigmoid.
-      - Computes beta (contribution of initial features) from the initial-feature latent via a small linear -> sigmoid.
-      - Fuses as: H = alpha * H_GNN + (1 - alpha) * H_MLP + beta * H_init.
-      - Returns updated features and auxiliary self-supervised loss (mean of prediction losses).
-    """
-
-    def __init__(
-        self,
-        feature_dimension: int,
-        structural_dimension: int,
-        calculation_dimension: int,
-        initial_feature_dimension: int = None,
-    ):
-        super().__init__(feature_dimension, structural_dimension, calculation_dimension)
-
-        if initial_feature_dimension is None:
-            initial_feature_dimension = feature_dimension
-
-        # Prediction heads (self-supervised)
-        self.structural_prediction_head = nn.Linear(calculation_dimension, calculation_dimension)
-        self.feature_prediction_head = nn.Linear(calculation_dimension, calculation_dimension)
-
-        # Projection for initial features (H^(0)) into calculation latent
-        self.initial_projection = nn.Linear(initial_feature_dimension, calculation_dimension)
-
-        # Loss embedding: turn two scalar losses -> vector in calculation_dimension
-        self.loss_projection = nn.Linear(2, calculation_dimension)
-
-        # Alpha gate: input will be [structural_latent || feature_latent || loss_embedding]
-        # so input dimension is calculation_dimension * 3
-        self.alpha_W1 = nn.Linear(calculation_dimension * 3, calculation_dimension)
-        self.alpha_layernorm = nn.LayerNorm(calculation_dimension)
-        self.alpha_v2 = nn.Linear(calculation_dimension, 1)  # projects to scalar per node
-
-        # Beta gate: projects initial_latent -> scalar
-        self.beta_vres = nn.Linear(calculation_dimension, 1)
-
-        # Output projection back to original feature dimension if necessary
-        if calculation_dimension != feature_dimension:
-            self.output_projection = nn.Linear(calculation_dimension, feature_dimension)
-        else:
-            self.output_projection = nn.Identity()
-
-        # Initialize gating projection weights small so sigmoid ~0.5 initially
-        self._reset_adaptive_parameters()
-
-    def _reset_adaptive_parameters(self):
-        nn.init.uniform_(self.alpha_v2.weight, -0.01, 0.01)
-        nn.init.constant_(self.alpha_v2.bias, 0.0)
-        nn.init.uniform_(self.beta_vres.weight, -0.01, 0.01)
-        nn.init.constant_(self.beta_vres.bias, 0.0)
-
-        # Also initialize loss_projection to small values so loss embedding starts near zero
-        nn.init.uniform_(self.loss_projection.weight, -0.01, 0.01)
-        nn.init.constant_(self.loss_projection.bias, 0.0)
-
-    @staticmethod
-    def _aggregate_neighbor_mean(node_features: torch.Tensor, edge_index: tuple):
-        """
-        Efficient neighbor aggregation that computes, for each source node i,
-        the mean of features of its destination neighbors:
-            aggregated[i] = mean_{(i -> j) in edges} node_features[j]
-        This mirrors adjacency[src, dst] = 1 then normalized_adjacency @ node_features.
-        """
-        src, dst = edge_index  # expected LongTensor vectors of same length E
-        num_nodes = node_features.size(0)
-        feat_dim = node_features.size(1)
-        device = node_features.device
-
-        # Sum features of destinations into the corresponding source rows:
-        aggregated = node_features.new_zeros((num_nodes, feat_dim))
-        # index_add_: for each edge e, add node_features[dst[e]] to aggregated[src[e]]
-        aggregated.index_add_(0, src, node_features[dst])
-
-        # degree = number of outgoing edges per source
-        degree = torch.bincount(src, minlength=num_nodes).float().unsqueeze(1).to(device)
-        degree = degree.clamp(min=1e-6)  # avoid divide-by-zero
-
-        neighbor_mean = aggregated / degree
-        return neighbor_mean
-
-    def integrate(self, node_features, structural_encodings, edge_indices, node_indices=None, initial_features=None):
-        """
-        Args:
-            node_features: tensor [N, feat_dim]  (H_MLP^(l))
-            structural_encodings: tensor [N, struct_dim]  (H_GNN^(l))
-            edge_indices: tuple (src, dst) where src,dst are LongTensors of length E
-            node_indices: optional selection of node indices to update
-            initial_features: tensor [N, feat_dim0]  (H_MLP^(0)), required for beta gate (if None, zeros used)
-        Returns:
-            updated_node_features: tensor [N, feat_dim]
-            aux_loss: scalar tensor (mean of self-supervised losses)
-        """
-        if node_indices is None:
-            node_indices = torch.arange(node_features.size(0), device=node_features.device)
-
-        device = node_features.device
-
-        # 1) Subset the node-specific latents
-        feature_subset = node_features[node_indices]                    # [B, feat_dim]
-        structure_subset = structural_encodings[node_indices]          # [B, struct_dim]
-
-        # 2) Project to calculation latent space (assume base Gate defines these)
-        feature_latent = self.feature_projection(feature_subset)       # [B, calc_dim]
-        structural_latent = self.structural_projection(structure_subset)  # [B, calc_dim]
-
-        # 3) Initial features latent
-        if initial_features is not None:
-            initial_subset = initial_features[node_indices]
-        else:
-            # fallback to zeros -- consistent with earlier design choice
-            initial_subset = torch.zeros_like(feature_subset, device=device)
-
-        initial_latent = self.initial_projection(initial_subset)       # [B, calc_dim]
-
-        # 4) Build neighborhood feature targets (over all nodes) WITHOUT grad, then select node_indices
-        neighbor_feature_targets_full = None
-        with torch.no_grad():
-            # Use efficient index_add aggregation (mirrors normalized_adjacency @ node_features)
-            neighbor_feature_targets_full = self._aggregate_neighbor_mean(node_features, edge_indices)  # [N, feat_dim]
-        neighbor_feature_targets = neighbor_feature_targets_full[node_indices]  # [B, feat_dim]
-
-        # 5) Predict targets from each pathway (in latent space)
-        # map structural & feature latents -> predicted neighbor latent
-        predicted_from_structure = self.structural_prediction_head(structural_latent)  # [B, calc_dim]
-        predicted_from_features = self.feature_prediction_head(feature_latent)         # [B, calc_dim]
-
-        # Project neighbor targets into calculation latent (same projection used for features)
-        target_latent = self.feature_projection(neighbor_feature_targets)             # [B, calc_dim]
-
-        # 6) Self-supervised per-node MSE losses (mean across latent dims -> scalar per node)
-        structural_prediction_loss = functional.mse_loss(predicted_from_structure, target_latent, reduction='none').mean(dim=1)  # [B]
-        feature_prediction_loss = functional.mse_loss(predicted_from_features, target_latent, reduction='none').mean(dim=1)     # [B]
-
-        # 7) Embed the two losses -> vector and create gating input
-        # Stack losses -> [B, 2], then project to [B, calc_dim]
-        loss_pair = torch.stack([structural_prediction_loss, feature_prediction_loss], dim=1)  # [B, 2]
-        loss_emb = self.loss_projection(loss_pair)                                             # [B, calc_dim]
-
-        # Gating input: [structural_latent || feature_latent || loss_emb]
-        gate_input = torch.cat([structural_latent, feature_latent, loss_emb], dim=-1)          # [B, calc_dim*3]
-
-        # 8) Compute alpha (learned gating coefficient) per node
-        alpha_hidden = self.alpha_W1(gate_input)
-        alpha_hidden = self.alpha_layernorm(alpha_hidden)
-        alpha_hidden = functional.relu(alpha_hidden)
-        alpha_score = self.alpha_v2(alpha_hidden)          # [B, 1]
-        alpha = torch.sigmoid(alpha_score)                 # [B, 1]
-
-        # 9) Compute beta (learned importance of initial features)
-        beta_score = self.beta_vres(initial_latent)        # [B, 1]
-        beta = torch.sigmoid(beta_score)                   # [B, 1]
-
-        # 10) Final fusion following AG-GNN eq (alpha, 1-alpha, beta)
-        fused_representation = (
-            alpha * structural_latent
-            + (1.0 - alpha) * feature_latent
-            + beta * initial_latent
-        )  # [B, calc_dim]
-
-        # 11) Project back to feature space, assign to updated features
-        fused_representation = self.output_projection(fused_representation)  # [B, feat_dim]
-        updated_node_features = node_features.clone()
-        updated_node_features[node_indices] = fused_representation
-
-        # 12) Auxiliary loss: average of both prediction losses (mean over batch)
-        total_aux_loss = (structural_prediction_loss + feature_prediction_loss).mean()
-
-        return updated_node_features, total_aux_loss
-
-
-import torch
-from torch import nn
-
-class ResidualAdaptiveGate(Gate):
-    """
-    Safer Adaptive gate: learns a *residual* update on top of the baseline features.
-    Initialization makes it behave like Std (identity), then it can learn improvements.
-
-    update = output_projection(alpha * H_gnn + (1-alpha) * H_mlp + beta * H0) - H_mlp_latent
-    H_out = H_in + scale * tanh(update)
-    """
-
-    def __init__(
-        self,
-        feature_dimension: int,
-        structural_dimension: int,
-        calculation_dimension: int,
-        initial_feature_dimension: int = None,
-        residual_scale_init: float = 0.0,
-    ):
-        super().__init__(feature_dimension, structural_dimension, calculation_dimension)
-
-        if initial_feature_dimension is None:
-            initial_feature_dimension = feature_dimension
-
-        self.initial_projection = nn.Linear(initial_feature_dimension, calculation_dimension)
-
-        self.alpha_W1 = nn.Linear(calculation_dimension * 2, calculation_dimension)
-        self.alpha_layernorm = nn.LayerNorm(calculation_dimension)
-        self.alpha_v2 = nn.Linear(calculation_dimension, 1)
-
-        self.beta_vres = nn.Linear(calculation_dimension, 1)
-
-        if calculation_dimension != feature_dimension:
-            self.output_projection = nn.Linear(calculation_dimension, feature_dimension)
-        else:
-            self.output_projection = nn.Identity()
-
-        # Learned global residual scale; 0.0 => exact identity at init
-        self.residual_logit = nn.Parameter(torch.tensor(float(residual_scale_init)))
-
-        self._reset_adaptive_parameters()
-
-    def _reset_adaptive_parameters(self):
-        nn.init.uniform_(self.alpha_v2.weight, -0.01, 0.01)
-        nn.init.constant_(self.alpha_v2.bias, 0.0)
-        nn.init.uniform_(self.beta_vres.weight, -0.01, 0.01)
-        nn.init.constant_(self.beta_vres.bias, 0.0)
-
-    def integrate(self, node_features, structural_encodings, edge_indices, node_indices=None, initial_features=None):
-        if node_indices is None:
-            node_indices = torch.arange(node_features.size(0), device=node_features.device)
-
-        feature_subset = node_features[node_indices]
-        structure_subset = structural_encodings[node_indices]
-
-        if initial_features is not None:
-            initial_subset = initial_features[node_indices]
-        else:
-            initial_subset = torch.zeros_like(feature_subset)
-
-        # Project to latent
-        feature_latent = self.feature_projection(feature_subset)
-        structural_latent = self.structural_projection(structure_subset)
-        initial_latent = self.initial_projection(initial_subset)
-
-        # Alpha gate
-        concat_features = torch.cat([structural_latent, feature_latent], dim=-1)
-        alpha_hidden = self.alpha_layernorm(self.alpha_W1(concat_features))
-        alpha_hidden = torch.relu(alpha_hidden)
-        alpha = torch.sigmoid(self.alpha_v2(alpha_hidden))  # [B, 1]
-
-        # Beta gate
-        beta = torch.sigmoid(self.beta_vres(initial_latent))  # [B, 1]
-
-        # Latent fused
-        fused_latent = alpha * structural_latent + (1.0 - alpha) * feature_latent + beta * initial_latent
-
-        # Form a residual update in feature space and apply bounded residual
-        fused_feat = self.output_projection(fused_latent)  # [B, feat_dim]
-        delta = fused_feat - feature_subset               # residual relative to baseline
-
-        scale = torch.sigmoid(self.residual_logit)        # scalar in (0, 1)
-        updated_subset = feature_subset + scale * torch.tanh(delta)
-
-        updated_node_features = node_features.clone()
-        updated_node_features[node_indices] = updated_subset
         return updated_node_features, None
 
 
@@ -745,3 +478,264 @@ class AdaptiveGateWithSparsity(Gate):
         sparsity_loss = self.lambda_sparse * alpha.mean()
 
         return updated_node_features, sparsity_loss
+
+class DisagreementAwareAdaptiveGate(Gate):
+    """
+    Disagreement- and Reliability-Aware AG-GNN Gate.
+
+    This extends AG-GNN by:
+      1) Measuring agreement between structural and feature representations
+      2) Measuring local consistency (reliability) of each pathway
+      3) Using all of these signals to decide how much to trust structure vs features
+
+    It keeps the same fusion equation:
+
+        H = alpha * H_GNN + (1 - alpha) * H_MLP + beta * H_0
+
+    But alpha is now computed from:
+      - learned AG-GNN alpha
+      - representation agreement
+      - structural consistency
+      - feature consistency
+    """
+
+    def __init__(
+        self,
+        feature_dimension: int,
+        structural_dimension: int,
+        calculation_dimension: int,
+        initial_feature_dimension: int = None,
+    ):
+        super().__init__(feature_dimension, structural_dimension, calculation_dimension)
+
+        if initial_feature_dimension is None:
+            initial_feature_dimension = feature_dimension
+
+        # Projection for initial features
+        self.initial_projection = nn.Linear(initial_feature_dimension, calculation_dimension)
+
+        # --- Standard AG-GNN alpha MLP ---
+        self.alpha_W1 = nn.Linear(calculation_dimension * 2, calculation_dimension)
+        self.alpha_layernorm = nn.LayerNorm(calculation_dimension)
+        self.alpha_v2 = nn.Linear(calculation_dimension, 1)
+
+        # --- Combine signals into final alpha ---
+        # Inputs: [logit(alpha_learned), agreement, struct_consistency, feat_consistency]
+        self.alpha_fusion = nn.Linear(4, 1)
+
+        # --- Beta gate ---
+        self.beta_vres = nn.Linear(calculation_dimension, 1)
+
+        # --- Output projection ---
+        if calculation_dimension != feature_dimension:
+            self.output_projection = nn.Linear(calculation_dimension, feature_dimension)
+        else:
+            self.output_projection = nn.Identity()
+
+        self._reset_parameters()
+
+    def _reset_parameters(self):
+        nn.init.uniform_(self.alpha_v2.weight, -0.01, 0.01)
+        nn.init.constant_(self.alpha_v2.bias, 0.0)
+
+        nn.init.uniform_(self.beta_vres.weight, -0.01, 0.01)
+        nn.init.constant_(self.beta_vres.bias, 0.0)
+
+        # Initialize fusion to be conservative initially
+        nn.init.zeros_(self.alpha_fusion.weight)
+        nn.init.zeros_(self.alpha_fusion.bias)
+
+    @staticmethod
+    def _neighbor_mean(x: torch.Tensor, edge_index: tuple):
+        """
+        Compute mean of neighbor features for each node:
+            mean[i] = mean_{(i -> j) in edges} x[j]
+        """
+        src, dst = edge_index
+        num_nodes = x.size(0)
+        dim = x.size(1)
+        device = x.device
+
+        out = x.new_zeros((num_nodes, dim))
+        out.index_add_(0, src, x[dst])
+
+        deg = torch.bincount(src, minlength=num_nodes).float().unsqueeze(1).to(device)
+        deg = deg.clamp(min=1.0)
+
+        return out / deg
+
+    def integrate(self, node_features, structural_encodings, edge_indices, node_indices=None, initial_features=None):
+
+        if node_indices is None:
+            node_indices = torch.arange(node_features.size(0), device=node_features.device)
+
+        # Subsets
+        feature_subset = node_features[node_indices]
+        structure_subset = structural_encodings[node_indices]
+
+        if initial_features is not None:
+            initial_subset = initial_features[node_indices]
+        else:
+            initial_subset = torch.zeros_like(feature_subset)
+
+        # Project to latent space
+        feature_latent = self.feature_projection(feature_subset)
+        structural_latent = self.structural_projection(structure_subset)
+        initial_latent = self.initial_projection(initial_subset)
+
+        # -------------------------------------------------
+        # 1) Standard AG-GNN learned alpha
+        # -------------------------------------------------
+        concat_features = torch.cat([structural_latent, feature_latent], dim=-1)
+        alpha_hidden = self.alpha_W1(concat_features)
+        alpha_hidden = self.alpha_layernorm(alpha_hidden)
+        alpha_hidden = torch.relu(alpha_hidden)
+        alpha_learned = torch.sigmoid(self.alpha_v2(alpha_hidden))  # [B, 1]
+
+        # Convert to logit for fusion
+        eps = 1e-6
+        alpha_learned_logit = torch.log(alpha_learned.clamp(eps, 1 - eps) / (1 - alpha_learned.clamp(eps, 1 - eps)))
+
+        # -------------------------------------------------
+        # 2) Agreement signal: cosine(H_gnn, H_mlp)
+        # -------------------------------------------------
+        f_norm = torch.nn.functional.normalize(feature_latent, dim=1)
+        s_norm = torch.nn.functional.normalize(structural_latent, dim=1)
+        agreement = (f_norm * s_norm).sum(dim=1, keepdim=True)  # [-1, 1]
+
+        # -------------------------------------------------
+        # 3) Consistency / reliability signals
+        # -------------------------------------------------
+        with torch.no_grad():
+            feat_nb = self._neighbor_mean(node_features, edge_indices)
+            struct_nb = self._neighbor_mean(structural_encodings, edge_indices)
+
+        feat_nb_subset = feat_nb[node_indices]
+        struct_nb_subset = struct_nb[node_indices]
+
+        feat_nb_latent = self.feature_projection(feat_nb_subset)
+        struct_nb_latent = self.structural_projection(struct_nb_subset)
+
+        # Cosine consistency
+        feat_consistency = torch.nn.functional.cosine_similarity(feature_latent, feat_nb_latent, dim=1).unsqueeze(1)
+        struct_consistency = torch.nn.functional.cosine_similarity(structural_latent, struct_nb_latent, dim=1).unsqueeze(1)
+
+        # -------------------------------------------------
+        # 4) Fuse signals into final alpha
+        # -------------------------------------------------
+        alpha_input = torch.cat(
+            [
+                alpha_learned_logit,
+                agreement,
+                struct_consistency,
+                feat_consistency,
+            ],
+            dim=1,
+        )  # [B, 4]
+
+        alpha = torch.sigmoid(self.alpha_fusion(alpha_input))  # [B, 1]
+
+        # -------------------------------------------------
+        # 5) Beta gate
+        # -------------------------------------------------
+        beta = torch.sigmoid(self.beta_vres(initial_latent))  # [B, 1]
+
+        # -------------------------------------------------
+        # 6) Final fusion
+        # -------------------------------------------------
+        fused_latent = (
+            alpha * structural_latent
+            + (1.0 - alpha) * feature_latent
+            + beta * initial_latent
+        )
+
+        fused_feat = self.output_projection(fused_latent)
+
+        updated_node_features = node_features.clone()
+        updated_node_features[node_indices] = fused_feat
+
+        return updated_node_features, None
+
+class JumpingKnowledgeGate(Gate):
+    """
+    Jumping Knowledge gate for 1-layer GCN.
+
+    This implements a learned skip connection between:
+        h0 = input features (pre-GCN)
+        h1 = output of 1-layer GCN
+
+    Form:
+        gamma = sigmoid( MLP([h1 || h0]) )
+        h = gamma * h1 + (1 - gamma) * h0
+
+    This is the correct JK-style depth selection in a 1-layer network.
+    """
+
+    def __init__(
+        self,
+        feature_dimension: int,
+        structural_dimension: int,      # unused, kept for interface compatibility
+        calculation_dimension: int,
+    ):
+        super().__init__(feature_dimension, structural_dimension, calculation_dimension)
+
+        # Project both to latent
+        self.h1_projection = nn.Linear(feature_dimension, calculation_dimension)
+        self.h0_projection = nn.Linear(feature_dimension, calculation_dimension)
+
+        # Gate MLP: decides between h1 and h0
+        self.gamma_W1 = nn.Linear(calculation_dimension * 2, calculation_dimension)
+        self.gamma_ln = nn.LayerNorm(calculation_dimension)
+        self.gamma_v = nn.Linear(calculation_dimension, 1)
+
+        # Output projection back to feature dim if needed
+        if calculation_dimension != feature_dimension:
+            self.output_projection = nn.Linear(calculation_dimension, feature_dimension)
+        else:
+            self.output_projection = nn.Identity()
+
+        self._reset_parameters()
+
+    def _reset_parameters(self):
+        # Initialize gate to ~0.5 so it starts as simple averaging
+        nn.init.uniform_(self.gamma_v.weight, -0.01, 0.01)
+        nn.init.constant_(self.gamma_v.bias, 0.0)
+
+    def integrate(self, node_features, structural_encodings, edge_indices, node_indices=None, initial_features=None):
+        """
+        Args:
+            node_features: h1 (GCN output)           [N, D]
+            initial_features: h0 (input features)    [N, D]   (REQUIRED)
+        """
+
+        if initial_features is None:
+            raise ValueError("JumpingKnowledgeGate requires initial_features (h0).")
+
+        if node_indices is None:
+            node_indices = torch.arange(node_features.size(0), device=node_features.device)
+
+        # Subsets
+        h1 = node_features[node_indices]
+        h0 = initial_features[node_indices]
+
+        # Project to latent
+        h1_latent = self.h1_projection(h1)
+        h0_latent = self.h0_projection(h0)
+
+        # Gate
+        concat = torch.cat([h1_latent, h0_latent], dim=-1)
+        hidden = self.gamma_W1(concat)
+        hidden = self.gamma_ln(hidden)
+        hidden = torch.relu(hidden)
+        gamma = torch.sigmoid(self.gamma_v(hidden))  # [B, 1]
+
+        # Fuse
+        fused_latent = gamma * h1_latent + (1.0 - gamma) * h0_latent
+        fused_feat = self.output_projection(fused_latent)
+
+        # Write back
+        updated_node_features = node_features.clone()
+        updated_node_features[node_indices] = fused_feat
+
+        return updated_node_features, None
+
