@@ -10,13 +10,87 @@ from torch_geometric.nn import GCNConv
 
 
 """
-This script runs a comprehensive experiment to evaluate various structural encoders and gating mechanisms on both synthetic and real graph datasets.
-Experiment 1: Verify that gating mechanisms can improve performance on synthetic datasets with known structural patterns.
-Experiment 2: Evaluate the same gating mechanisms on real-world datasets to see if the benefits translate
-to practical scenarios.
-Experiment 3: Analyze which combinations of encoders and gates work best for different types of graphs (e.g., homophilous vs. heterophilous).
-Experiment 4: Ablation studies to understand the contribution of each component (encoder, gate) to the overall performance.
+This script runs a controlled empirical study on how to integrate global structural information
+with local message-passing in graph neural networks. The central goal is to understand:
+
+    When should a GNN rely on global structural priors versus learned local features,
+    and how should these two information sources be combined?
+
+To answer this, we decompose the representation into two streams:
+    (1) A local semantic stream learned by a shallow GCN.
+    (2) A frozen global structural stream provided by a precomputed structural encoder
+        (e.g., degree, Laplacian, or Node2Vec embeddings).
+
+We then study different fusion strategies, with particular focus on adaptive gating mechanisms
+that allow the model to arbitrarily interpolate between structure and features on a per-node basis.
+
+The experiments are organized into four conceptual blocks:
+
+------------------------------------------------------------
+Experiment 1 — Do frozen structural bases help at all?
+------------------------------------------------------------
+We compare a plain GCN against models augmented with different frozen structural encoders:
+    - None (no structure, baseline)
+    - Degree (local structural signal)
+    - Laplacian (spectral / diffusion-based global signal)
+    - Node2Vec (random-walk-based global signal)
+    - Random (control)
+
+This experiment isolates whether decoupled, frozen global structure provides any benefit
+over pure message passing.
+
+------------------------------------------------------------
+Experiment 2 — Is adaptive gating better than naive fusion?
+------------------------------------------------------------
+For each structural encoder, we compare multiple fusion mechanisms:
+    - No fusion (baseline)
+    - Simple fusion (e.g., concatenation / linear mixing)
+    - Adaptive gating (our main mechanism)
+
+This experiment tests whether *how* structure is injected matters, and whether allowing the model
+to adaptively control reliance on structure vs features is superior to fixed fusion.
+
+------------------------------------------------------------
+Experiment 3 — When does structure matter? (Synthetic graphs)
+------------------------------------------------------------
+Using controlled synthetic graph families (random, SBM, role-based graphs), we evaluate:
+    - Which graph regimes benefit from global structural information
+    - Which regimes prefer local message passing
+    - How different fusion strategies behave under varying structural conditions
+
+This experiment is designed to reveal the causal role of global structure and to study
+structure–feature arbitration under controlled conditions.
+
+------------------------------------------------------------
+Experiment 4 — Full ablation over structure × fusion choices
+------------------------------------------------------------
+We run the full grid over:
+    - Structural encoders × fusion mechanisms × graph types × random seeds
+
+and report mean ± std performance. This serves to:
+    - Isolate the contribution of the structural stream
+    - Isolate the contribution of the fusion mechanism
+    - Verify that gains are not due to a specific encoder or dataset artifact
+
+------------------------------------------------------------
+Datasets
+------------------------------------------------------------
+We evaluate on:
+    - Synthetic graphs: random, SBM, and role-based graphs (for controlled analysis)
+    - Real benchmarks: Cora, Amazon-Computers, and MUSAE-Facebook
+
+------------------------------------------------------------
+Key Scientific Questions Addressed
+------------------------------------------------------------
+1. Does decoupled, frozen global structure help GNNs beyond local message passing?
+2. Is adaptive fusion strictly better than naive structural feature injection?
+3. On what types of graphs does the model rely more on structure vs features?
+4. Is Node2Vec special, or do other structural bases work similarly?
+
+Overall, this script implements a principled study of structural–semantic decoupling and
+adaptive arbitration in graph neural networks, rather than a benchmark-driven model comparison.
 """
+
 
 from utilities.dataloader import load_dataset
 
@@ -49,8 +123,6 @@ from integrators.structural_integrator import (
     SimpleFeatureGate,
     SelfSupervisedGate,
     AdaptiveGateWithSparsity,
-    CombinedAdaptiveSelfSupervisedGate,
-    ResidualAdaptiveGate,
 )
 
 # ----------------------------
